@@ -86,7 +86,7 @@ resource "azurerm_federated_identity_credential" "github_federated_credential_re
   resource_group_name = var.rg_name
   audience            = ["api://AzureADTokenExchange"]
   issuer              = "https://token.actions.githubusercontent.com"
-  parent_id           = dara.azurerm_user_assigned_identity.mlops_identity_one.id
+  parent_id           = data.azurerm_user_assigned_identity.mlops_identity_one.id
   subject             = "repo:${var.github_org}/${var.github_repo}:pull_request"
 }
 
