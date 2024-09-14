@@ -83,7 +83,7 @@ resource "azurerm_federated_identity_credential" "github_federated_credential" {
 
 resource "azurerm_federated_identity_credential" "github_federated_credential_pr" {
   name                = "github-federated-credential-repo"
-  resource_group_name = var.rg_name
+  resource_group_name = data.azurerm_user_assigned_identity.mlops_identity_one.resource_group_name
   audience            = ["api://AzureADTokenExchange"]
   issuer              = "https://token.actions.githubusercontent.com"
   parent_id           = data.azurerm_user_assigned_identity.mlops_identity_one.id
