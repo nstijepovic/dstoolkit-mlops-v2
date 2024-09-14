@@ -55,6 +55,11 @@ resource "azurerm_container_registry" "acr" {
   }
 }
 
+data "azurerm_user_assigned_identity" "mlops_identity_one" {
+  name                = "mlopsv2-testing-auth"
+  resource_group_name = "mlopsv2-testing-rg"
+}
+
 resource "azurerm_user_assigned_identity" "mlops_identity" {
   location            = var.location
   name                = "mlopsv2-testing-umi"
@@ -74,4 +79,22 @@ resource "azurerm_federated_identity_credential" "github_federated_credential" {
   issuer              = "https://token.actions.githubusercontent.com"
   parent_id           = azurerm_user_assigned_identity.mlops_identity.id
   subject             = "repo:${var.github_org}/${var.github_repo}:ref:refs/heads/main"
+}
+
+resource "azurerm_federated_identity_credential" "github_federated_credential_repo" {
+  name                = "github-federated-credential-repo"
+  resource_group_name = var.rg_name
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = "https://token.actions.githubusercontent.com"
+  parent_id           = data.azurerm_user_assigned_identity.mlops_identity_one.id
+  subject             = "repo:${var.github_org}/${var.github_repo}:pull_request"
+}
+
+resource "azurerm_federated_identity_credential" "github_federated_credential" {
+  name                = "github-federated-credential-repo"
+  resource_group_name = var.rg_name
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = "https://token.actions.githubusercontent.com"
+  parent_id           = azurerm_user_assigned_identity.mlops_identity.id
+  subject             = "repo:${var.github_org}/${var.github_repo}:pull_request"
 }
