@@ -25,3 +25,4 @@ output "app_insights_name" {
 output "workspace_name" {
   value = azurerm_machine_learning_workspace.adl_mlw.name
 }
+
