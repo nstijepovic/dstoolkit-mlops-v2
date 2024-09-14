@@ -32,4 +32,3 @@ jobs:
     with:
       exec_environment: ${{ inputs.exec_environment || 'pr' }}
       model_type: ${{ inputs.model_type || 'nyc_taxi' }}
-
