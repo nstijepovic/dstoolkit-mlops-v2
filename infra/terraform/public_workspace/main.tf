@@ -81,7 +81,7 @@ resource "azurerm_federated_identity_credential" "github_federated_credential" {
   subject             = "repo:${var.github_org}/${var.github_repo}:ref:refs/heads/main"
 }
 
-resource "azurerm_federated_identity_credential" "github_federated_credential_repo" {
+resource "azurerm_federated_identity_credential" "github_federated_credential_pr" {
   name                = "github-federated-credential-repo"
   resource_group_name = var.rg_name
   audience            = ["api://AzureADTokenExchange"]
@@ -90,7 +90,7 @@ resource "azurerm_federated_identity_credential" "github_federated_credential_re
   subject             = "repo:${var.github_org}/${var.github_repo}:pull_request"
 }
 
-resource "azurerm_federated_identity_credential" "github_federated_credential" {
+resource "azurerm_federated_identity_credential" "github_federated_credential_pr2" {
   name                = "github-federated-credential-repo"
   resource_group_name = var.rg_name
   audience            = ["api://AzureADTokenExchange"]
