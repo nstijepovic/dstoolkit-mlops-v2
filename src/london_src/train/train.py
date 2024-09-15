@@ -1,12 +1,3 @@
-"""
-This module is responsible for training a machine learning model using the provided dataset.
-
-The module uses Linear Regression from scikit-learn for model training and leverages
-MLflow for experiment tracking. The data is split into training and test sets, with the
-model being trained on the training set. The test data and model outputs are saved for
-further evaluation and deployment.
-"""
-
 import argparse
 from pathlib import Path
 import os
@@ -16,37 +7,14 @@ from sklearn.model_selection import train_test_split
 import pickle
 import mlflow
 import json
-from azure.ai.ml import MLClient
 from azure.identity import DefaultAzureCredential
-
-
-def get_features_from_store(feature_store_name):
-    """
-    Retrieve features from the feature store.
-
-    Args:
-        feature_store_name (str): Name of the feature store.
-
-    Returns:
-        tuple: Pickup and dropoff features.
-    """
-    credential = DefaultAzureCredential()
-    ml_client = MLClient.from_config(credential=credential)
-
-    pickup_features = ml_client.feature_sets.get_feature_values(
-        feature_set_name="pickup_features",
-        feature_store_name=feature_store_name
-    )
-    dropoff_features = ml_client.feature_sets.get_feature_values(
-        feature_set_name="dropoff_features",
-        feature_store_name=feature_store_name
-    )
-    return pickup_features, dropoff_features
+from azureml.featurestore import FeatureStoreClient
+from azureml.featurestore import get_offline_features
 
 
 def main(training_data, test_data, model_output, model_metadata, feature_store_name):
     """
-    Read training data, split data and initiate training.
+    Read training data, retrieve features from the feature store, and initiate training.
 
     Parameters:
       training_data (str): training data folder
@@ -81,16 +49,31 @@ def main(training_data, test_data, model_output, model_metadata, feature_store_n
     train_data = df_list[0]
     print(train_data.columns)
 
-    # Get features from feature store
-    pickup_features, dropoff_features = get_features_from_store(feature_store_name)
+    # Initialize feature store client
+    featurestore = FeatureStoreClient(
+        credential=DefaultAzureCredential(),
+        feature_store_name=feature_store_name,
+    )
 
-    # Merge features with training data
-    train_data = train_data.merge(pickup_features, on="pickup_datetime")
-    train_data = train_data.merge(dropoff_features, on="dropoff_datetime")
+    # Retrieve features from the feature store
+    feature_set = featurestore.feature_sets.get("transactions", "1")
+    features = [
+        feature_set.get_feature("transaction_amount_7d_sum"),
+        feature_set.get_feature("transaction_amount_7d_avg"),
+        feature_set.get_feature("transaction_3d_count"),
+        feature_set.get_feature("transaction_amount_3d_avg"),
+    ]
 
-    train_x, test_x, trainy, testy = split(train_data)
-    write_test_data(test_x, testy, test_data)
-    train_model(train_x, trainy, model_output, model_metadata)
+    # Generate training dataframe by using feature data and observation data
+    enriched_train_data = get_offline_features(
+        features=features,
+        observation_data=train_data,
+        timestamp_column="timestamp",
+    )
+
+    train_x, test_x, trainy, testy = split(enriched_train_data)
+    write_test_data(test_x, testy)
+    train_model(train_x, trainy)
 
 
 def split(train_data):
@@ -108,30 +91,7 @@ def split(train_data):
     """
     # Split the data into input(X) and output(y)
     y = train_data["cost"]
-    x = train_data[
-        [
-            "distance",
-            "dropoff_latitude",
-            "dropoff_longitude",
-            "passengers",
-            "pickup_latitude",
-            "pickup_longitude",
-            "store_forward",
-            "vendor",
-            "pickup_weekday",
-            "pickup_month",
-            "pickup_monthday",
-            "pickup_hour",
-            "pickup_minute",
-            "pickup_second",
-            "dropoff_weekday",
-            "dropoff_month",
-            "dropoff_monthday",
-            "dropoff_hour",
-            "dropoff_minute",
-            "dropoff_second",
-        ]
-    ]
+    x = train_data.drop(["cost", "timestamp", "accountID"], axis=1)  # Remove non-feature columns
 
     # Split the data into train and test sets
     train_x, test_x, trainy, testy = train_test_split(

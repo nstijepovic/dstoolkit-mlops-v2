@@ -27,10 +27,21 @@ from mlops.common.naming_utils import (
 from azure.ai.ml.entities import (
     FeatureStore,
     FeatureSet,
-    Feature,
-    OnlineStoreSettings,
+    FeatureSetSpecification,
+    DataColumn,
+    DataColumnType,
+    FeatureStoreEntity,
 )
-
+from azureml.featurestore import create_feature_set_spec
+from azureml.featurestore.feature_source import ParquetFeatureSource
+from azureml.featurestore.contracts import (
+    DateTimeOffset,
+    TransformationCode,
+    Column,
+    ColumnType,
+    TimestampColumn,
+)
+from azure.ai.ml.entities import MaterializationSettings, MaterializationComputeResource
 
 gl_pipeline_components = []
 
@@ -45,47 +56,132 @@ def create_feature_store(config):
     Returns:
         FeatureStore: A configured FeatureStore object.
     """
-    return FeatureStore(
-        name=config.feature_store_config["name"],
-        online_store=OnlineStoreSettings(
-            name=config.feature_store_config["online_store_name"],
-            type="AzureSQL"
-        )
+    ml_client = MLClient(
+        credential=DefaultAzureCredential(),
+        subscription_id=config.feature_store_config["subscription_id"],
+        resource_group_name=config.feature_store_config["resource_group_name"],
     )
 
+    fs = FeatureStore(
+        name=config.feature_store_config["name"],
+        location=config.feature_store_config["location"]
+    )
+    fs_poller = ml_client.feature_stores.begin_create(fs)
+    return fs_poller.result()
 
-def define_features():
+
+def define_features(ml_client, feature_store, config):
     """
-    Define feature sets for the taxi data.
+    Define and register feature sets for the feature store.
+
+    Args:
+        ml_client: The MLClient for communicating with Azure services.
+        feature_store: The feature store where features will be stored.
+        config: Configuration object with feature store data path and other settings.
 
     Returns:
-        list: A list of FeatureSet objects for pickup and dropoff features.
+        FeatureSetSpecification: The defined feature set specification.
     """
-    pickup_features = FeatureSet(
-        name="pickup_features",
-        features=[
-            Feature(name="pickup_hour", type="int"),
-            Feature(name="pickup_day", type="int"),
-            Feature(name="pickup_month", type="int"),
-            Feature(name="pickup_weekday", type="int"),
-        ],
-        tags={"type": "time"},
-        description="Time-based features for pickup",
+    feature_set_spec = create_feature_set_spec(
+        source=ParquetFeatureSource(
+            path=config.feature_store_config["data_path"],
+            timestamp_column=TimestampColumn(name="timestamp"),
+            source_delay=DateTimeOffset(days=0, hours=0, minutes=20),
+        ),
+        transformation_code=TransformationCode(
+            path=config.feature_store_config["transformation_code_path"],
+            transformer_class="transaction_transform.TransactionFeatureTransformer",
+        ),
+        index_columns=[Column(name="accountID", type=ColumnType.string)],
+        source_lookback=DateTimeOffset(days=7, hours=0, minutes=0),
+        temporal_join_lookback=DateTimeOffset(days=1, hours=0, minutes=0),
+        infer_schema=True,
     )
 
-    dropoff_features = FeatureSet(
-        name="dropoff_features",
-        features=[
-            Feature(name="dropoff_hour", type="int"),
-            Feature(name="dropoff_day", type="int"),
-            Feature(name="dropoff_month", type="int"),
-            Feature(name="dropoff_weekday", type="int"),
-        ],
-        tags={"type": "time"},
-        description="Time-based features for dropoff",
+    ml_client.feature_sets.create_or_update(feature_set_spec, feature_store_name=feature_store.name)
+    return feature_set_spec
+
+
+def register_entity(fs_client, entity_name, index_columns):
+    """
+    Register a feature store entity.
+
+    Args:
+        fs_client: The feature store client.
+        entity_name: Name of the entity.
+        index_columns: List of index columns for the entity.
+
+    Returns:
+        The result of the entity registration.
+    """
+    entity_config = FeatureStoreEntity(
+        name=entity_name,
+        version="1",
+        index_columns=[DataColumn(name=col, type=DataColumnType.STRING) for col in index_columns],
+        stage="Development",
+        description=f"This entity represents {entity_name} index key(s).",
+        tags={"data_type": "nonPII"},
     )
 
-    return [pickup_features, dropoff_features]
+    poller = fs_client.feature_store_entities.begin_create_or_update(entity_config)
+    return poller.result()
+
+
+def register_feature_set(fs_client, feature_set_name, entity_name, specification_path):
+    """
+    Register a feature set with the feature store.
+
+    Args:
+        fs_client: The feature store client.
+        feature_set_name: Name of the feature set.
+        entity_name: Name of the associated entity.
+        specification_path: Path to the feature set specification.
+
+    Returns:
+        The result of the feature set registration.
+    """
+    feature_set_config = FeatureSet(
+        name=feature_set_name,
+        version="1",
+        description=f"Feature set for {feature_set_name}",
+        entities=[f"azureml:{entity_name}:1"],
+        stage="Development",
+        specification=FeatureSetSpecification(path=specification_path),
+        tags={"data_type": "nonPII"},
+    )
+
+    poller = fs_client.feature_sets.begin_create_or_update(feature_set_config)
+    return poller.result()
+
+
+def enable_materialization(fs_client, feature_set_name):
+    """
+    Enable materialization for a feature set.
+
+    Args:
+        fs_client: The feature store client.
+        feature_set_name: Name of the feature set.
+
+    Returns:
+        The result of enabling materialization.
+    """
+    feature_set_config = fs_client.feature_sets.get(name=feature_set_name, version="1")
+
+    feature_set_config.materialization_settings = MaterializationSettings(
+        offline_enabled=True,
+        resource=MaterializationComputeResource(instance_type="standard_e8s_v3"),
+        spark_configuration={
+            "spark.driver.cores": 4,
+            "spark.driver.memory": "36g",
+            "spark.executor.cores": 4,
+            "spark.executor.memory": "36g",
+            "spark.executor.instances": 2,
+        },
+        schedule=None,
+    )
+
+    poller = fs_client.feature_sets.begin_create_or_update(feature_set_config)
+    return poller.result()
 
 
 @pipeline()
@@ -227,6 +323,104 @@ def construct_pipeline(
     return pipeline_job
 
 
+def prepare_and_execute(
+    build_environment: str,
+    wait_for_completion: str,
+    output_file: str,
+):
+    """
+    Prepare and execute the MLOps pipeline.
+
+    Args:
+        build_environment (str): environment name to execute.
+        wait_for_completion (str): "True" or "False" - indicates whether to wait for the job to complete.
+        output_file (str): The path to the output file where the job name will be written.
+    """
+    model_name = "london_taxi"
+
+    config = MLOpsConfig(environment=build_environment)
+
+    ml_client = MLClient(
+        DefaultAzureCredential(),
+        config.aml_config["subscription_id"],
+        config.aml_config["resource_group_name"],
+        config.aml_config["workspace_name"],
+    )
+
+    # Create or update feature store
+    feature_store = create_feature_store(config)
+
+    # Initialize feature store client
+    fs_client = MLClient(
+        DefaultAzureCredential(),
+        config.feature_store_config["subscription_id"],
+        config.feature_store_config["resource_group_name"],
+        feature_store.name,
+    )
+
+    # Define and register features
+    feature_set_spec = define_features(ml_client, feature_store, config)
+
+    # Register entity
+    register_entity(fs_client, "account", ["accountID"])
+
+    # Register feature set
+    register_feature_set(fs_client, "transactions", "account", config.feature_store_config["feature_set_spec_path"])
+
+    # Enable materialization
+    enable_materialization(fs_client, "transactions")
+
+    pipeline_config = config.get_pipeline_config(model_name)
+
+    compute = get_compute(
+        config.aml_config["subscription_id"],
+        config.aml_config["resource_group_name"],
+        config.aml_config["workspace_name"],
+        pipeline_config["cluster_name"],
+        pipeline_config["cluster_size"],
+        pipeline_config["cluster_region"],
+    )
+
+    environment = get_environment(
+        config.aml_config["subscription_id"],
+        config.aml_config["resource_group_name"],
+        config.aml_config["workspace_name"],
+        config.environment_configuration["env_base_image"],
+        pipeline_config["conda_path"],
+        pipeline_config["aml_env_name"],
+    )
+
+    print(f"Environment: {environment.name}, version: {environment.version}")
+
+    published_model_name = generate_model_name(model_name)
+    published_experiment_name = generate_experiment_name(model_name)
+    published_run_name = generate_run_name(
+        config.environment_configuration["build_reference"]
+    )
+
+    pipeline_job = construct_pipeline(
+        compute.name,
+        f"azureml:{environment.name}:{environment.version}",
+        published_run_name,
+        build_environment,
+        config.environment_configuration["build_reference"],
+        published_model_name,
+        pipeline_config["dataset_name"],
+        feature_store.name,
+        ml_client,
+    )
+
+    execute_pipeline(
+        config.aml_config["subscription_id"],
+        config.aml_config["resource_group_name"],
+        config.aml_config["workspace_name"],
+        published_experiment_name,
+        pipeline_job,
+        wait_for_completion,
+        output_file,
+    )
+
+
 def execute_pipeline(
     subscription_id: str,
     resource_group_name: str,
@@ -280,90 +474,6 @@ def execute_pipeline(
             ex,
         )
         raise
-
-
-def prepare_and_execute(
-    build_environment: str,
-    wait_for_completion: str,
-    output_file: str,
-):
-    """
-    Prepare and execute the MLOps pipeline.
-
-    Args:
-        build_environment (str): environment name to execute.
-        wait_for_completion (str): "True" or "False" - indicates whether to wait for the job to complete.
-        output_file (str): The path to the output file where the job name will be written.
-    """
-    model_name = "london_taxi"
-
-    config = MLOpsConfig(environment=build_environment)
-
-    ml_client = MLClient(
-        DefaultAzureCredential(),
-        config.aml_config["subscription_id"],
-        config.aml_config["resource_group_name"],
-        config.aml_config["workspace_name"],
-    )
-
-    # Create or update feature store
-    feature_store = create_feature_store(config)
-    ml_client.feature_stores.create_or_update(feature_store)
-
-    # Create or update feature sets
-    feature_sets = define_features()
-    for feature_set in feature_sets:
-        ml_client.feature_sets.create_or_update(feature_set)
-
-    pipeline_config = config.get_pipeline_config(model_name)
-
-    compute = get_compute(
-        config.aml_config["subscription_id"],
-        config.aml_config["resource_group_name"],
-        config.aml_config["workspace_name"],
-        pipeline_config["cluster_name"],
-        pipeline_config["cluster_size"],
-        pipeline_config["cluster_region"],
-    )
-
-    environment = get_environment(
-        config.aml_config["subscription_id"],
-        config.aml_config["resource_group_name"],
-        config.aml_config["workspace_name"],
-        config.environment_configuration["env_base_image"],
-        pipeline_config["conda_path"],
-        pipeline_config["aml_env_name"],
-    )
-
-    print(f"Environment: {environment.name}, version: {environment.version}")
-
-    published_model_name = generate_model_name(model_name)
-    published_experiment_name = generate_experiment_name(model_name)
-    published_run_name = generate_run_name(
-        config.environment_configuration["build_reference"]
-    )
-
-    pipeline_job = construct_pipeline(
-        compute.name,
-        f"azureml:{environment.name}:{environment.version}",
-        published_run_name,
-        build_environment,
-        config.environment_configuration["build_reference"],
-        published_model_name,
-        pipeline_config["dataset_name"],
-        config.feature_store_config["name"],
-        ml_client,
-    )
-
-    execute_pipeline(
-        config.aml_config["subscription_id"],
-        config.aml_config["resource_group_name"],
-        config.aml_config["workspace_name"],
-        published_experiment_name,
-        pipeline_job,
-        wait_for_completion,
-        output_file,
-    )
 
 
 def main():
