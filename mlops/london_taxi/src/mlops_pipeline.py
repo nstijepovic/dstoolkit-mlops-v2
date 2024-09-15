@@ -3,18 +3,18 @@ This module defines a machine learning pipeline for processing, training, and ev
 
 The pipeline executes the following steps in order:
 1. Prepare Sample Data: Preprocesses raw data to make it suitable for further processing and analysis.
-2. Transform Sample Data: Performs advanced data transformations such as feature engineering.
-3. Train with Sample Data: Trains a machine learning model using the transformed data.
-4. Predict with Sample Data: Uses the trained model to make predictions on new data.
-5. Score with Sample Data: Evaluates the model's performance based on its predictions.
-6. Finalize and Persist Model: Handles tasks like persisting model metadata, registering the model,
+2. Feature Engineering: Computes features and stores them in the feature store.
+3. Transform Sample Data: Performs advanced data transformations and retrieves features from the store.
+4. Train with Sample Data: Trains a machine learning model using the transformed data and features.
+5. Predict with Sample Data: Uses the trained model to make predictions on new data.
+6. Score with Sample Data: Evaluates the model's performance based on its predictions.
+7. Finalize and Persist Model: Handles tasks like persisting model metadata, registering the model,
 and generating reports.
 """
 from azure.identity import DefaultAzureCredential
 import argparse
 from azure.ai.ml.dsl import pipeline
-from azure.ai.ml import MLClient, Input
-from azure.ai.ml import load_component
+from azure.ai.ml import MLClient, Input, load_component
 import time
 import os
 from mlops.common.get_compute import get_compute
@@ -25,20 +25,80 @@ from mlops.common.naming_utils import (
     generate_model_name,
     generate_run_name,
 )
+from azure.ai.ml.entities import (
+    FeatureStore,
+    FeatureSet,
+    Feature,
+    OnlineStoreSettings,
+)
 
 
 gl_pipeline_components = []
 
 
-@pipeline()
-def london_taxi_data_regression(pipeline_job_input, model_name, build_reference):
+def create_feature_store(config):
     """
-    Run a pipeline for regression analysis on NYC taxi data.
+    Create a FeatureStore object based on the configuration.
+
+    Args:
+        config: Configuration object containing feature store settings.
+
+    Returns:
+        FeatureStore: A configured FeatureStore object.
+    """
+    return FeatureStore(
+        name=config.feature_store_config["name"],
+        online_store=OnlineStoreSettings(
+            name=config.feature_store_config["online_store_name"],
+            type="AzureSQL"
+        )
+    )
+
+
+def define_features():
+    """
+    Define feature sets for the taxi data.
+
+    Returns:
+        list: A list of FeatureSet objects for pickup and dropoff features.
+    """
+    pickup_features = FeatureSet(
+        name="pickup_features",
+        features=[
+            Feature(name="pickup_hour", type="int"),
+            Feature(name="pickup_day", type="int"),
+            Feature(name="pickup_month", type="int"),
+            Feature(name="pickup_weekday", type="int"),
+        ],
+        tags={"type": "time"},
+        description="Time-based features for pickup",
+    )
+
+    dropoff_features = FeatureSet(
+        name="dropoff_features",
+        features=[
+            Feature(name="dropoff_hour", type="int"),
+            Feature(name="dropoff_day", type="int"),
+            Feature(name="dropoff_month", type="int"),
+            Feature(name="dropoff_weekday", type="int"),
+        ],
+        tags={"type": "time"},
+        description="Time-based features for dropoff",
+    )
+
+    return [pickup_features, dropoff_features]
+
+
+@pipeline()
+def london_taxi_data_regression(pipeline_job_input, model_name, build_reference, feature_store_name):
+    """
+    Run a pipeline for regression analysis on London taxi data.
 
     Parameters:
     pipeline_job_input (str): Path to the input data.
     model_name (str): Name of the model.
     build_reference (str): Reference for the build.
+    feature_store_name (str): Name of the feature store.
 
     Returns:
     dict: A dictionary containing paths to various data, the model, predictions, and score report.
@@ -46,21 +106,28 @@ def london_taxi_data_regression(pipeline_job_input, model_name, build_reference)
     prepare_sample_data = gl_pipeline_components[0](
         raw_data=pipeline_job_input,
     )
-    transform_sample_data = gl_pipeline_components[1](
+    feature_engineering = gl_pipeline_components[1](
         clean_data=prepare_sample_data.outputs.prep_data,
+        feature_store_name=feature_store_name,
     )
-    train_with_sample_data = gl_pipeline_components[2](
+    transform_sample_data = gl_pipeline_components[2](
+        clean_data=prepare_sample_data.outputs.prep_data,
+        feature_data=feature_engineering.outputs.feature_data,
+    )
+    train_with_sample_data = gl_pipeline_components[3](
         training_data=transform_sample_data.outputs.transformed_data,
+        feature_store_name=feature_store_name,
     )
-    predict_with_sample_data = gl_pipeline_components[3](
+    predict_with_sample_data = gl_pipeline_components[4](
         model_input=train_with_sample_data.outputs.model_output,
         test_data=train_with_sample_data.outputs.test_data,
+        feature_store_name=feature_store_name,
     )
-    score_with_sample_data = gl_pipeline_components[4](
+    score_with_sample_data = gl_pipeline_components[5](
         predictions=predict_with_sample_data.outputs.predictions,
         model=train_with_sample_data.outputs.model_output,
     )
-    gl_pipeline_components[5](
+    gl_pipeline_components[6](
         model_metadata=train_with_sample_data.outputs.model_metadata,
         model_name=model_name,
         score_report=score_with_sample_data.outputs.score_report,
@@ -85,10 +152,11 @@ def construct_pipeline(
     build_reference: str,
     model_name: str,
     dataset_name: str,
+    feature_store_name: str,
     ml_client,
 ):
     """
-    Construct a pipeline job for NYC taxi data regression.
+    Construct a pipeline job for London taxi data regression.
 
     Args:
         cluster_name (str): The name of the cluster to use for pipeline execution.
@@ -98,6 +166,7 @@ def construct_pipeline(
         build_reference (str): The build reference for the pipeline job.
         model_name (str): The name of the model.
         dataset_name (str): The name of the dataset.
+        feature_store_name (str): The name of the feature store.
         ml_client: The machine learning client.
 
     Returns:
@@ -108,6 +177,7 @@ def construct_pipeline(
     parent_dir = os.path.join(os.getcwd(), "mlops/london_taxi/components")
 
     prepare_data = load_component(source=parent_dir + "/prep.yml")
+    feature_engineering = load_component(source=parent_dir + "/feature_engineering.yml")
     transform_data = load_component(source=parent_dir + "/transform.yml")
     train_model = load_component(source=parent_dir + "/train.yml")
     predict_result = load_component(source=parent_dir + "/predict.yml")
@@ -116,23 +186,28 @@ def construct_pipeline(
 
     # Set the environment name to custom environment using name and version number
     prepare_data.environment = environment_name
+    feature_engineering.environment = environment_name
     transform_data.environment = environment_name
     train_model.environment = environment_name
     predict_result.environment = environment_name
     score_data.environment = environment_name
     register_model.environment = environment_name
 
-    gl_pipeline_components.append(prepare_data)
-    gl_pipeline_components.append(transform_data)
-    gl_pipeline_components.append(train_model)
-    gl_pipeline_components.append(predict_result)
-    gl_pipeline_components.append(score_data)
-    gl_pipeline_components.append(register_model)
+    gl_pipeline_components.extend([
+        prepare_data,
+        feature_engineering,
+        transform_data,
+        train_model,
+        predict_result,
+        score_data,
+        register_model
+    ])
 
     pipeline_job = london_taxi_data_regression(
         Input(type="uri_folder", path=registered_data_asset.id),
         model_name,
         build_reference,
+        feature_store_name,
     )
 
     pipeline_job.display_name = display_name
@@ -198,45 +273,8 @@ def execute_pipeline(
                 out_file.write(pipeline_job.name)
 
         if wait_for_completion == "True":
-            total_wait_time = 3600
-            current_wait_time = 0
-            job_status = [
-                "NotStarted",
-                "Queued",
-                "Starting",
-                "Preparing",
-                "Running",
-                "Finalizing",
-                "Provisioning",
-                "CancelRequested",
-                "Failed",
-                "Canceled",
-                "NotResponding",
-            ]
+            client.jobs.stream(pipeline_job.name)
 
-            while pipeline_job.status in job_status:
-                if current_wait_time <= total_wait_time:
-                    time.sleep(20)
-                    pipeline_job = client.jobs.get(pipeline_job.name)
-
-                    print("Job Status:", pipeline_job.status)
-
-                    current_wait_time = current_wait_time + 15
-
-                    if (
-                        pipeline_job.status == "Failed"
-                        or pipeline_job.status == "NotResponding"
-                        or pipeline_job.status == "CancelRequested"
-                        or pipeline_job.status == "Canceled"
-                    ):
-                        break
-                else:
-                    break
-
-            if pipeline_job.status == "Completed" or pipeline_job.status == "Finished":
-                print("job completed")
-            else:
-                raise Exception("Sorry, exiting job with failure..")
     except Exception as ex:
         print(
             "Oops! invalid credentials or error while creating ML environment.. Try again...",
@@ -268,6 +306,15 @@ def prepare_and_execute(
         config.aml_config["resource_group_name"],
         config.aml_config["workspace_name"],
     )
+
+    # Create or update feature store
+    feature_store = create_feature_store(config)
+    ml_client.feature_stores.create_or_update(feature_store)
+
+    # Create or update feature sets
+    feature_sets = define_features()
+    for feature_set in feature_sets:
+        ml_client.feature_sets.create_or_update(feature_set)
 
     pipeline_config = config.get_pipeline_config(model_name)
 
@@ -305,6 +352,7 @@ def prepare_and_execute(
         config.environment_configuration["build_reference"],
         published_model_name,
         pipeline_config["dataset_name"],
+        config.feature_store_config["name"],
         ml_client,
     )
 
