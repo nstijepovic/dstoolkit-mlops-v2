@@ -1,3 +1,11 @@
+"""
+This module is responsible for training a machine learning model using the provided dataset and feature store.
+
+It uses Linear Regression from scikit-learn for model training and leverages
+MLflow for experiment tracking. The data is enriched with features from the feature store,
+split into training and test sets, with the model being trained on the training set.
+The test data and model outputs are saved for further evaluation and deployment.
+"""
 import argparse
 from pathlib import Path
 import os

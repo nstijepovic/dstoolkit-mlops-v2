@@ -359,7 +359,7 @@ def prepare_and_execute(
     )
 
     # Define and register features
-    feature_set_spec = define_features(ml_client, feature_store, config)
+    define_features(ml_client, feature_store, config)
 
     # Register entity
     register_entity(fs_client, "account", ["accountID"])
