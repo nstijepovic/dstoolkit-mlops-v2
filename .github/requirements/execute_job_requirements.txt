@@ -4,4 +4,4 @@ azure-identity==1.14.0
 mlflow==2.11.3
 python-dotenv>=0.10.3
 azureml-mlflow>=1.51.0
-azureml-featurestore>=1.10
+azureml-featurestore>=1.1.0
