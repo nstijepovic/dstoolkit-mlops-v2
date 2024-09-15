@@ -1,0 +1,20 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+name: feature_engineering
+display_name: FeatureEngineering
+version: 1
+type: command
+inputs:
+  clean_data:
+    type: uri_folder
+  feature_store_name:
+    type: string
+outputs:
+  feature_data:
+    type: uri_folder
+code: ./../../../
+environment: azureml:AzureML-sklearn-1.1-ubuntu20.04-py38-cpu@latest
+command: >-
+  python -m src.london_src.feature_engineering.feature_engineering
+  --clean_data ${{inputs.clean_data}}
+  --feature_store_name ${{inputs.feature_store_name}}
+  --feature_data ${{outputs.feature_data}}

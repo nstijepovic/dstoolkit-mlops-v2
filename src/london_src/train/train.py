@@ -16,9 +16,35 @@ from sklearn.model_selection import train_test_split
 import pickle
 import mlflow
 import json
+from azure.ai.ml import MLClient
+from azure.identity import DefaultAzureCredential
 
 
-def main(training_data, test_data, model_output, model_metadata):
+def get_features_from_store(feature_store_name):
+    """
+    Retrieve features from the feature store.
+
+    Args:
+        feature_store_name (str): Name of the feature store.
+
+    Returns:
+        tuple: Pickup and dropoff features.
+    """
+    credential = DefaultAzureCredential()
+    ml_client = MLClient.from_config(credential=credential)
+
+    pickup_features = ml_client.feature_sets.get_feature_values(
+        feature_set_name="pickup_features",
+        feature_store_name=feature_store_name
+    )
+    dropoff_features = ml_client.feature_sets.get_feature_values(
+        feature_set_name="dropoff_features",
+        feature_store_name=feature_store_name
+    )
+    return pickup_features, dropoff_features
+
+
+def main(training_data, test_data, model_output, model_metadata, feature_store_name):
     """
     Read training data, split data and initiate training.
 
@@ -26,7 +52,8 @@ def main(training_data, test_data, model_output, model_metadata):
       training_data (str): training data folder
       test_data (str): test data folder
       model_output (str): a folder to store model files
-      model_metadata (str): a file to store information about thr model
+      model_metadata (str): a file to store information about the model
+      feature_store_name (str): name of the feature store
     """
     print("Hello training world...")
 
@@ -35,6 +62,7 @@ def main(training_data, test_data, model_output, model_metadata):
         f"Test data path: {test_data}",
         f"Model output path: {model_output}",
         f"Model metadata path: {model_metadata}",
+        f"Feature store name: {feature_store_name}",
     ]
 
     for line in lines:
@@ -47,15 +75,22 @@ def main(training_data, test_data, model_output, model_metadata):
     df_list = []
     for filename in arr:
         print("reading file: %s ..." % filename)
-        input_df = pd.read_csv((Path(training_data) / filename))
+        input_df = pd.read_parquet((Path(training_data) / filename))
         df_list.append(input_df)
 
     train_data = df_list[0]
     print(train_data.columns)
 
+    # Get features from feature store
+    pickup_features, dropoff_features = get_features_from_store(feature_store_name)
+
+    # Merge features with training data
+    train_data = train_data.merge(pickup_features, on="pickup_datetime")
+    train_data = train_data.merge(dropoff_features, on="dropoff_datetime")
+
     train_x, test_x, trainy, testy = split(train_data)
-    write_test_data(test_x, testy)
-    train_model(train_x, trainy)
+    write_test_data(test_x, testy, test_data)
+    train_model(train_x, trainy, model_output, model_metadata)
 
 
 def split(train_data):
@@ -108,7 +143,7 @@ def split(train_data):
     return train_x, test_x, trainy, testy
 
 
-def train_model(train_x, trainy):
+def train_model(train_x, trainy, model_output, model_metadata):
     """
     Train a Linear Regression model and save the model and its metadata.
 
@@ -129,13 +164,13 @@ def train_model(train_x, trainy):
         run_id = mlflow.active_run().info.run_id
         model_uri = f"runs:/{run_id}/model"
         model_data = {"run_id": run.info.run_id, "run_uri": model_uri}
-        with open(args.model_metadata, "w") as json_file:
+        with open(model_metadata, "w") as json_file:
             json.dump(model_data, json_file, indent=4)
 
-        pickle.dump(model, open((Path(args.model_output) / "model.sav"), "wb"))
+        pickle.dump(model, open((Path(model_output) / "model.sav"), "wb"))
 
 
-def write_test_data(test_x, testy):
+def write_test_data(test_x, testy, test_data):
     """
     Write the testing data to a CSV file.
 
@@ -148,7 +183,7 @@ def write_test_data(test_x, testy):
     """
     test_x["cost"] = testy
     print(test_x.shape)
-    test_x.to_csv((Path(args.test_data) / "test_data.csv"))
+    test_x.to_csv((Path(test_data) / "test_data.csv"))
 
 
 if __name__ == "__main__":
@@ -157,12 +192,8 @@ if __name__ == "__main__":
     parser.add_argument("--test_data", type=str, help="Path to test data")
     parser.add_argument("--model_output", type=str, help="Path of output model")
     parser.add_argument("--model_metadata", type=str, help="Path of model metadata")
+    parser.add_argument("--feature_store_name", type=str, help="Name of the feature store")
 
     args = parser.parse_args()
 
-    training_data = args.training_data
-    test_data = args.test_data
-    model_output = args.model_output
-    model_metadata = args.model_metadata
-
-    main(training_data, test_data, model_output, model_metadata)
+    main(args.training_data, args.test_data, args.model_output, args.model_metadata, args.feature_store_name)
