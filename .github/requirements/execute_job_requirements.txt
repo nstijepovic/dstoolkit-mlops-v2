@@ -1,5 +1,5 @@
 azure-cli==2.53.0
-azure-ai-ml==1.12.1
+azure-ai-m>=1.12.1
 azure-identity==1.14.0
 mlflow==2.11.3
 python-dotenv>=0.10.3
