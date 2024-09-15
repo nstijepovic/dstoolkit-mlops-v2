@@ -1,3 +1,10 @@
+"""
+This module provides functionality for feature engineering using Azure Feature Store.
+
+It includes functions to retrieve and enrich data with features from the feature store,
+which can be used in the machine learning pipeline for the London Taxi dataset.
+"""
+
 from azure.identity import DefaultAzureCredential
 from azureml.featurestore import FeatureStoreClient
 from azureml.featurestore import get_offline_features
