@@ -15,7 +15,6 @@ from azure.identity import DefaultAzureCredential
 import argparse
 from azure.ai.ml.dsl import pipeline
 from azure.ai.ml import MLClient, Input, load_component
-import time
 import os
 from mlops.common.get_compute import get_compute
 from mlops.common.get_environment import get_environment
