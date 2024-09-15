@@ -98,3 +98,21 @@ resource "azurerm_federated_identity_credential" "github_federated_credential_pr
   parent_id           = azurerm_user_assigned_identity.mlops_identity.id
   subject             = "repo:${var.github_org}/${var.github_repo}:pull_request"
 }
+
+resource "azurerm_federated_identity_credential" "github_federated_credential_env" {
+  name                = "github-federated-credential-env"
+  resource_group_name = data.azurerm_user_assigned_identity.mlops_identity_one.resource_group_name
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = "https://token.actions.githubusercontent.com"
+  parent_id           = data.azurerm_user_assigned_identity.mlops_identity_one.id
+  subject             = "repo:${var.github_org}/${var.github_repo}:environment:dev"
+}
+
+resource "azurerm_federated_identity_credential" "github_federated_credential_env2" {
+  name                = "github-federated-credential-env"
+  resource_group_name = var.rg_name
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = "https://token.actions.githubusercontent.com"
+  parent_id           = azurerm_user_assigned_identity.mlops_identity.id
+  subject             = "repo:${var.github_org}/${var.github_repo}:environment:dev"
+}
