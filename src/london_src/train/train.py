@@ -1,11 +1,12 @@
 """
-This module is responsible for training a machine learning model using the provided dataset and feature store.
+This module is responsible for training a machine learning model using the provided dataset.
 
-It uses Linear Regression from scikit-learn for model training and leverages
-MLflow for experiment tracking. The data is enriched with features from the feature store,
-split into training and test sets, with the model being trained on the training set.
-The test data and model outputs are saved for further evaluation and deployment.
+The module uses Linear Regression from scikit-learn for model training and leverages
+MLflow for experiment tracking. The data is split into training and test sets, with the
+model being trained on the training set. The test data and model outputs are saved for
+further evaluation and deployment.
 """
+
 import argparse
 from pathlib import Path
 import os
@@ -15,14 +16,12 @@ from sklearn.model_selection import train_test_split
 import pickle
 import mlflow
 import json
-from azure.identity import DefaultAzureCredential
-from azureml.featurestore import FeatureStoreClient
-from azureml.featurestore import get_offline_features
+from src.london_src.feature_engineering.feature_set_spec import get_enriched_data
 
 
 def main(training_data, test_data, model_output, model_metadata, feature_store_name):
     """
-    Read training data, retrieve features from the feature store, and initiate training.
+    Read training data, split data and initiate training.
 
     Parameters:
       training_data (str): training data folder
@@ -51,33 +50,14 @@ def main(training_data, test_data, model_output, model_metadata, feature_store_n
     df_list = []
     for filename in arr:
         print("reading file: %s ..." % filename)
-        input_df = pd.read_parquet((Path(training_data) / filename))
+        input_df = pd.read_csv((Path(training_data) / filename))
         df_list.append(input_df)
 
     train_data = df_list[0]
     print(train_data.columns)
 
-    # Initialize feature store client
-    featurestore = FeatureStoreClient(
-        credential=DefaultAzureCredential(),
-        feature_store_name=feature_store_name,
-    )
-
-    # Retrieve features from the feature store
-    feature_set = featurestore.feature_sets.get("transactions", "1")
-    features = [
-        feature_set.get_feature("transaction_amount_7d_sum"),
-        feature_set.get_feature("transaction_amount_7d_avg"),
-        feature_set.get_feature("transaction_3d_count"),
-        feature_set.get_feature("transaction_amount_3d_avg"),
-    ]
-
-    # Generate training dataframe by using feature data and observation data
-    enriched_train_data = get_offline_features(
-        features=features,
-        observation_data=train_data,
-        timestamp_column="timestamp",
-    )
+    # Enrich data with features from feature store
+    enriched_train_data = get_enriched_data(train_data, feature_store_name)
 
     train_x, test_x, trainy, testy = split(enriched_train_data)
     write_test_data(test_x, testy)
@@ -111,7 +91,7 @@ def split(train_data):
     return train_x, test_x, trainy, testy
 
 
-def train_model(train_x, trainy, model_output, model_metadata):
+def train_model(train_x, trainy):
     """
     Train a Linear Regression model and save the model and its metadata.
 
@@ -132,13 +112,13 @@ def train_model(train_x, trainy, model_output, model_metadata):
         run_id = mlflow.active_run().info.run_id
         model_uri = f"runs:/{run_id}/model"
         model_data = {"run_id": run.info.run_id, "run_uri": model_uri}
-        with open(model_metadata, "w") as json_file:
+        with open(args.model_metadata, "w") as json_file:
             json.dump(model_data, json_file, indent=4)
 
-        pickle.dump(model, open((Path(model_output) / "model.sav"), "wb"))
+        pickle.dump(model, open((Path(args.model_output) / "model.sav"), "wb"))
 
 
-def write_test_data(test_x, testy, test_data):
+def write_test_data(test_x, testy):
     """
     Write the testing data to a CSV file.
 
@@ -151,7 +131,7 @@ def write_test_data(test_x, testy, test_data):
     """
     test_x["cost"] = testy
     print(test_x.shape)
-    test_x.to_csv((Path(test_data) / "test_data.csv"))
+    test_x.to_csv((Path(args.test_data) / "test_data.csv"))
 
 
 if __name__ == "__main__":
@@ -164,4 +144,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    main(args.training_data, args.test_data, args.model_output, args.model_metadata, args.feature_store_name)
+    training_data = args.training_data
+    test_data = args.test_data
+    model_output = args.model_output
+    model_metadata = args.model_metadata
+    feature_store_name = args.feature_store_name
+
+    main(training_data, test_data, model_output, model_metadata, feature_store_name)
