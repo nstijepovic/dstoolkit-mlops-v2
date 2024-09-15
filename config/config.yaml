@@ -4,13 +4,16 @@ aml_config:
   resource_group_name: ${RESOURCE_GROUP_NAME}
   workspace_name: ${WORKSPACE_NAME}
 
+feature_store_config:
+  subscription_id: ${SUBSCRIPTION_ID}
+  resource_group_name: ${RESOURCE_GROUP_NAME}
+  workspace_name: ${WORKSPACE_NAME}
+  name: taxi_feature_store
+  online_store_name: myonlinestore
+
 environment_configuration:
   env_base_image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04
   build_reference: ${BUILD_BUILDID}
-
-feature_store_config:
-  name: taxi_feature_store
-  online_store_name: myonlinestore
 
 pipeline_configs:
   london_taxi_pr:
