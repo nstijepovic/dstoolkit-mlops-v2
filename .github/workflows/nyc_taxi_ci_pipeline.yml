@@ -1,4 +1,4 @@
-# Continuous integration (CI) for nyc taxi model 
+# Continuous integration (CI) for nyc taxi model
 name: Nyc Taxi CI Workflow
 on:
   push:
@@ -25,11 +25,10 @@ on:
         default: "nyc_taxi"
 permissions:
   id-token: write
-  contents: read          
+  contents: read
 jobs:
   run-ci-workflow:
     uses: ./.github/workflows/platform_ci_workflow.yml
     with:
       exec_environment: ${{ inputs.exec_environment || 'dev' }}
       model_type: ${{ inputs.model_type || 'nyc_taxi' }}
-      
