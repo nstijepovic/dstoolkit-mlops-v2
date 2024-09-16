@@ -22,7 +22,15 @@ from azure.identity import DefaultAzureCredential
 # from azureml.featurestore.feature_source import CsvFeatureSource
 
 
-def main(training_data, test_data, model_output, model_metadata, feature_store_name, subscription_id, resource_group_name):
+def main(
+    training_data,
+    test_data,
+    model_output,
+    model_metadata,
+    feature_store_name,
+    subscription_id,
+    resource_group_name
+):
     """
     Read training data, split data, enrich data with features from the feature store, and initiate training.
 
