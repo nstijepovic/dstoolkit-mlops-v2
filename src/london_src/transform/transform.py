@@ -8,7 +8,6 @@ Additionally, it includes logic to define features for feature store registratio
 
 import pandas as pd
 import numpy as np
-from azureml.featurestore.contracts import Transformation
 from azureml.featurestore.feature_source import CsvFeatureSource
 from azureml.featurestore.contracts import (
     DateTimeOffset,
@@ -23,7 +22,7 @@ from azure.ai.ml import MLClient
 from mlops.common.config_utils import MLOpsConfig
 
 
-class TaxiDataTransformer(Transformation):
+class TaxiDataTransformer(TransformationCode):
     """
     Transform taxi data for feature store and machine learning.
 
