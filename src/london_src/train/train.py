@@ -16,7 +16,6 @@ from sklearn.model_selection import train_test_split
 import pickle
 import mlflow
 import json
-from src.london_src.feature_engineering.feature_set_spec import get_enriched_data
 
 
 def main(training_data, test_data, model_output, model_metadata, feature_store_name):
