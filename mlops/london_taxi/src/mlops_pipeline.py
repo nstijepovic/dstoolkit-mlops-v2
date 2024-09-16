@@ -53,7 +53,7 @@ def london_taxi_data_regression(
         transformation_code_path=transformation_code_path
     )
     train_with_sample_data = gl_pipeline_components[2](
-        training_data=transform_sample_data.outputs.transformed_data,
+        training_data=transform_sample_data.outputs.transformed_data_with_features,
         feature_store_name=feature_store_name,
     )
     predict_with_sample_data = gl_pipeline_components[3](
@@ -74,7 +74,7 @@ def london_taxi_data_regression(
 
     return {
         "pipeline_job_prepped_data": prepare_sample_data.outputs.prep_data,
-        "pipeline_job_transformed_data": transform_sample_data.outputs.transformed_data,
+        "pipeline_job_transformed_data_with_features": transform_sample_data.outputs.transformed_data_with_features,
         "pipeline_job_feature_set_specification": transform_sample_data.outputs.feature_set_specification,
         "pipeline_job_registered_feature_set": transform_sample_data.outputs.registered_feature_set,
         "pipeline_job_trained_model": train_with_sample_data.outputs.model_output,

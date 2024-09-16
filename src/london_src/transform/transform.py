@@ -3,7 +3,8 @@ Transform taxi data for training, including feature definition and engineering.
 
 This class is responsible for transforming and preparing taxi data.
 It transforms the input DataFrame and ensures proper data types, feature extraction, and normalization.
-Additionally, it includes logic to define features for feature store registration.
+Additionally, it includes logic to define features for feature store registration
+and enrichment with existing features.
 """
 
 import argparse
@@ -43,21 +44,17 @@ class TaxiDataTransformer(TransformationCode):
         """
         Apply transformations to the input DataFrame.
 
-        Parameters:
+        Args:
             df (pandas.DataFrame): Input DataFrame to transform.
             clean_data_path (str): Path to the cleaned data.
             transformation_code_path (str): Path to the transformation code.
 
         Returns:
             pandas.DataFrame: Transformed DataFrame ready for machine learning.
-            FeatureSetSpecification: The feature set specification for registration.
+            FeatureSetSpecification: Feature set specification for registration.
         """
-        # Clean and transform the data
         df = self._clean_and_transform_data(df)
-
-        # Define the features and register them in the feature store
         feature_set_spec = self._define_features(clean_data_path, transformation_code_path)
-
         return df, feature_set_spec
 
     def _clean_and_transform_data(self, df):
@@ -70,7 +67,6 @@ class TaxiDataTransformer(TransformationCode):
         Returns:
             pandas.DataFrame: The transformed DataFrame.
         """
-        # Ensure correct data types for lat/long fields
         df = df.astype({
             "pickup_longitude": "float64",
             "pickup_latitude": "float64",
@@ -78,31 +74,22 @@ class TaxiDataTransformer(TransformationCode):
             "dropoff_latitude": "float64",
         })
 
-        # Filter out coordinates outside the city border
         df = df[
-            (df.pickup_longitude <= -73.72) & (df.pickup_longitude >= -74.09)
-            & (df.pickup_latitude <= 40.88) & (df.pickup_latitude >= 40.53)
-            & (df.dropoff_longitude <= -73.72) & (df.dropoff_longitude >= -74.72)
-            & (df.dropoff_latitude <= 40.88) & (df.dropoff_latitude >= 40.53)
+            (df.pickup_longitude <= -73.72) & (df.pickup_longitude >= -74.09) &
+            (df.pickup_latitude <= 40.88) & (df.pickup_latitude >= 40.53) &
+            (df.dropoff_longitude <= -73.72) & (df.dropoff_longitude >= -74.72) &
+            (df.dropoff_latitude <= 40.88) & (df.dropoff_latitude >= 40.53)
         ]
 
-        df.reset_index(inplace=True, drop=True)
-
-        # Replace undefined values and rename columns to meaningful names
+        df.reset_index(drop=True, inplace=True)
         df["store_forward"] = df["store_forward"].replace("0", "N").fillna("N")
-        df["distance"] = df["distance"].replace(".00", 0).fillna(0)
-        df = df.astype({"distance": "float64"})
+        df["distance"] = df["distance"].replace(".00", 0).fillna(0).astype("float64")
 
-        # Date and time feature engineering
         df = self._add_datetime_features(df)
-
-        # Change 'store_forward' to binary values
         df["store_forward"] = np.where(df["store_forward"] == "N", 0, 1)
-
-        # Filter out rows where distance or cost is zero
         df = df[(df["distance"] > 0) & (df["cost"] > 0)]
 
-        df.reset_index(inplace=True, drop=True)
+        df.reset_index(drop=True, inplace=True)
         return df
 
     def _add_datetime_features(self, df):
@@ -126,10 +113,7 @@ class TaxiDataTransformer(TransformationCode):
         df.drop(["dropoff_datetime"], axis=1, inplace=True)
         return df
 
-    def _define_features(
-        self, clean_data, transformation_code_path,
-        subscription_id, resource_group_name, feature_store_name
-    ):
+    def _define_features(self, clean_data, transformation_code_path, subscription_id, resource_group_name, feature_store_name):
         """
         Define the features for feature store registration.
 
@@ -143,7 +127,6 @@ class TaxiDataTransformer(TransformationCode):
         Returns:
             FeatureSetSpecification: The feature set specification for registration.
         """
-        # Initialize the feature store client
         fs_client = MLClient(
             DefaultAzureCredential(),
             subscription_id=subscription_id,
@@ -151,7 +134,6 @@ class TaxiDataTransformer(TransformationCode):
             feature_store_name=feature_store_name
         )
 
-        # Define the feature set spec
         feature_set_spec = create_feature_set_spec(
             source=CsvFeatureSource(
                 path=clean_data,
@@ -168,53 +150,82 @@ class TaxiDataTransformer(TransformationCode):
             infer_schema=True,
         )
 
-        # Register the feature set with the feature store
-        feature_set_name = "london_taxi_features"
-        entity_name = "taxi_trip"
         poller = fs_client.feature_sets.begin_create_or_update(
-            name=feature_set_name,
+            name="london_taxi_features",
             feature_set_spec=feature_set_spec,
-            entity_name=entity_name,
+            entity_name="taxi_trip",
         )
         feature_set = poller.result()
 
         return feature_set_spec, feature_set
 
 
-def main(clean_data, transformation_code_path, transformed_data):
+def get_enriched_data(transformed_data, feature_store_name, subscription_id, resource_group_name):
     """
-    Main entry point for transforming taxi data and saving results.
+    Enrich the transformed data by pulling features from the Azure Feature Store.
+
+    Parameters:
+    transformed_data (pd.DataFrame): The transformed DataFrame that needs to be enriched.
+    feature_store_name (str): The name of the feature store.
+    subscription_id (str): Azure subscription ID.
+    resource_group_name (str): Azure resource group name.
+
+    Returns:
+    pd.DataFrame: The enriched DataFrame with additional features from the feature store.
+    """
+    # Initialize the Azure ML client
+    fs_client = MLClient(
+        DefaultAzureCredential(),
+        subscription_id=subscription_id,
+        resource_group_name=resource_group_name
+    )
+
+    # Retrieve the feature set from the feature store
+    feature_set = fs_client.feature_sets.get(name=feature_store_name, version="latest")
+
+    # Assuming that "vendorID" is the key column to join the feature store data with the transformed data
+    enriched_data = feature_set.join_on(transformed_data, join_column="vendorID")
+
+    return enriched_data
+
+
+def main(clean_data, transformation_code_path, transformed_data, feature_store_name, subscription_id, resource_group_name):
+    """
+    Main entry point for transforming and enriching taxi data.
 
     Args:
         clean_data (str): Path to the cleaned data.
         transformation_code_path (str): Path to the transformation code.
         transformed_data (str): Path to save the transformed data.
+        feature_store_name (str): Name of the feature store.
+        subscription_id (str): Azure subscription ID.
+        resource_group_name (str): Azure resource group name.
     """
-    # Load the cleaned data
     df = pd.read_csv(clean_data)
 
-    # Initialize TaxiDataTransformer with configuration
-    config = {}  # Configuration should be provided here
-    transformer = TaxiDataTransformer(config)
-
-    # Transform data and retrieve feature set specification
+    # Transform the data
+    transformer = TaxiDataTransformer(config={})
     transformed_df, feature_set_spec = transformer.transform(df, clean_data, transformation_code_path)
 
-    # Save the transformed data
-    transformed_df.to_csv(transformed_data, index=False)
+    # Enrich the data from the feature store
+    transformed_data_with_features = get_enriched_data(
+        transformed_df, feature_store_name, subscription_id, resource_group_name)
 
-    return transformed_df, feature_set_spec
+    # Save the final transformed and enriched data
+    transformed_data_with_features.to_csv(transformed_data, index=False)
+
+    return transformed_data_with_features, feature_set_spec
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser("transform")
     parser.add_argument("--clean_data", type=str, help="Path to prepped data")
-    parser.add_argument("--transformation_code_path", type=str, help="Path of output data")
-    parser.add_argument("--transformed_data", type=str, help="Path of output data")
+    parser.add_argument("--transformation_code_path", type=str, help="Path to the transformation code")
+    parser.add_argument("--transformed_data_with_features", type=str, help="Path of output data")
+    parser.add_argument("--feature_store_name", type=str, help="Name of the feature store")
+    parser.add_argument("--subscription_id", type=str, help="Azure subscription ID")
+    parser.add_argument("--resource_group_name", type=str, help="Azure resource group name")
 
     args = parser.parse_args()
-    clean_data = args.clean_data
-    transformation_code_path = args.transformation_code_path
-    transformed_data = args.transformed_data
-    main(clean_data, transformation_code_path, transformed_data)
+    main(args.clean_data, args.transformation_code_path, args.transformed_data_with_features,
+         args.feature_store_name, args.subscription_id, args.resource_group_name)

@@ -9,7 +9,7 @@ inputs:
   transformation_code_path:
     type: string
 outputs:
-  transformed_data:
+  transformed_data_with_features:
     type: uri_folder
   feature_set_specification:
     type: uri_folder
@@ -21,6 +21,6 @@ command: >-
   python -m src.london_src.transform.transform
   --clean_data ${{inputs.clean_data}} 
   --transformation_code_path ${{inputs.transformation_code_path}}
-  --transformed_data ${{outputs.transformed_data}}
+  --transformed_data_with_features ${{outputs.transformed_data_with_features}}
   --feature_set_specification ${{outputs.feature_set_specification}}
   --registered_feature_set ${{outputs.registered_feature_set}}
