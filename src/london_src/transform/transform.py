@@ -54,7 +54,8 @@ class TaxiDataTransformer(TransformationCode):
             FeatureSetSpecification: Feature set specification for registration.
         """
         df = self._clean_and_transform_data(df)
-        feature_set_spec = self._define_features(clean_data_path, transformation_code_path)
+        feature_set_spec = self._define_features(
+            clean_data_path, transformation_code_path)
         return df, feature_set_spec
 
     def _clean_and_transform_data(self, df):
@@ -167,7 +168,9 @@ class TaxiDataTransformer(TransformationCode):
         return feature_set_spec, feature_set
 
 
-def get_enriched_data(transformed_data, feature_store_name, subscription_id, resource_group_name):
+def get_enriched_data(
+    transformed_data, feature_store_name, subscription_id, resource_group_name
+):
     """
     Enrich the transformed data by pulling features from the Azure Feature Store.
 
@@ -205,7 +208,7 @@ def main(
     resource_group_name
 ):
     """
-    Main entry point for transforming and enriching taxi data.
+    Run the transformation and enrichment process for taxi data.
 
     Args:
         clean_data (str): Path to the cleaned data.
@@ -219,11 +222,14 @@ def main(
 
     # Transform the data
     transformer = TaxiDataTransformer(config={})
-    transformed_df, feature_set_spec = transformer.transform(df, clean_data, transformation_code_path)
+    transformed_df, feature_set_spec = transformer.transform(
+        df, clean_data, transformation_code_path
+    )
 
     # Enrich the data from the feature store
     transformed_data_with_features = get_enriched_data(
-        transformed_df, feature_store_name, subscription_id, resource_group_name)
+        transformed_df, feature_store_name, subscription_id, resource_group_name
+    )
 
     # Save the final transformed and enriched data
     transformed_data_with_features.to_csv(transformed_data, index=False)
@@ -234,8 +240,12 @@ def main(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("transform")
     parser.add_argument("--clean_data", type=str, help="Path to prepped data")
-    parser.add_argument("--transformation_code_path", type=str, help="Path to the transformation code")
-    parser.add_argument("--transformed_data_with_features", type=str, help="Path of output data")
+    parser.add_argument(
+        "--transformation_code_path", type=str, help="Path to the transformation code"
+    )
+    parser.add_argument(
+        "--transformed_data_with_features", type=str, help="Path of output data"
+    )
     parser.add_argument("--feature_store_name", type=str, help="Name of the feature store")
     parser.add_argument("--subscription_id", type=str, help="Azure subscription ID")
     parser.add_argument("--resource_group_name", type=str, help="Azure resource group name")
