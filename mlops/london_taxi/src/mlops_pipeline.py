@@ -1,37 +1,19 @@
 """
 This module defines a machine learning pipeline for processing, training, and evaluating data.
-
-The pipeline executes the following steps in order:
-1. Prepare Sample Data: Preprocesses raw data to make it suitable for further processing and analysis.
-2. Feature Engineering: Computes features and stores them in the feature store.
-3. Transform Sample Data: Performs advanced data transformations and retrieves features from the store.
-4. Train with Sample Data: Trains a machine learning model using the transformed data and features.
-5. Predict with Sample Data: Uses the trained model to make predictions on new data.
-6. Score with Sample Data: Evaluates the model's performance based on its predictions.
-7. Finalize and Persist Model: Handles tasks like persisting model metadata, registering the model,
-and generating reports.
+The pipeline executes the following steps:
+1. Prepare Sample Data: Preprocess raw data.
+2. Feature Engineering: Compute features and store in the feature store.
+3. Transform Sample Data: Perform transformations and retrieve features.
+4. Train Model: Train a model using the features.
+5. Predict: Use the trained model for predictions.
+6. Score: Evaluate the model performance.
+7. Register Model: Register the model and its metadata.
 """
+
 from azure.identity import DefaultAzureCredential
 import argparse
 from azure.ai.ml.dsl import pipeline
 from azure.ai.ml import MLClient, Input, load_component
-import os
-from mlops.common.get_compute import get_compute
-from mlops.common.get_environment import get_environment
-from mlops.common.config_utils import MLOpsConfig
-from mlops.common.naming_utils import (
-    generate_experiment_name,
-    generate_model_name,
-    generate_run_name,
-)
-from azure.ai.ml.entities import (
-    FeatureStore,
-    FeatureSet,
-    FeatureSetSpecification,
-    DataColumn,
-    DataColumnType,
-    FeatureStoreEntity,
-)
 from azureml.featurestore import create_feature_set_spec
 from azureml.featurestore.feature_source import CsvFeatureSource
 from azureml.featurestore.contracts import (
@@ -41,7 +23,24 @@ from azureml.featurestore.contracts import (
     ColumnType,
     TimestampColumn,
 )
-from azure.ai.ml.entities import MaterializationSettings, MaterializationComputeResource
+from azure.ai.ml.entities import (
+    FeatureStore,
+    FeatureSet,
+    FeatureSetSpecification,
+    DataColumn,
+    DataColumnType,
+    FeatureStoreEntity,
+    MaterializationSettings,
+    MaterializationComputeResource,
+)
+from mlops.common.get_compute import get_compute
+from mlops.common.get_environment import get_environment
+from mlops.common.config_utils import MLOpsConfig
+from mlops.common.naming_utils import (
+    generate_experiment_name,
+    generate_model_name,
+    generate_run_name,
+)
 
 gl_pipeline_components = []
 
@@ -85,12 +84,12 @@ def define_features(ml_client, feature_store, config):
     feature_set_spec = create_feature_set_spec(
         source=CsvFeatureSource(
             path=config.feature_store_config["data_path"],
-            timestamp_column=TimestampColumn(name="lpepPickupDatetime"),
+            timestamp_column=TimestampColumn(name="pickup_datetime"),
             source_delay=DateTimeOffset(days=0, hours=0, minutes=20),
         ),
         transformation_code=TransformationCode(
             path=config.feature_store_config["transformation_code_path"],
-            transformer_class="transaction_transform.TransactionFeatureTransformer",
+            transformer_class="TaxiDataTransformer",
         ),
         index_columns=[Column(name="vendorID", type=ColumnType.string)],
         source_lookback=DateTimeOffset(days=7, hours=0, minutes=0),
