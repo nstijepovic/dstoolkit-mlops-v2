@@ -15,3 +15,4 @@ dependencies:
       - azure-identity>=1.15.0
       - azure-keyvault-secrets>=4.7.0
       - pyspark==3.2.1
+      - azureml-featurestore>=1.1.0

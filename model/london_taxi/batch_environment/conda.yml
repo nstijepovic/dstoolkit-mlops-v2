@@ -11,3 +11,4 @@ dependencies:
       - azureml-core
       - azureml-dataset-runtime[fuse]
       - pyspark==3.2.1
+      - azureml-featurestore>=1.1.0

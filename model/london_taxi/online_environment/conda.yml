@@ -16,3 +16,4 @@ dependencies:
       - azureml-inference-server-http
       - Werkzeug==2.3.8
       - pyspark==3.2.1
+      - azureml-featurestore>=1.1.0
