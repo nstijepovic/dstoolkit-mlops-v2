@@ -13,7 +13,6 @@ feature_store_config:
   location: eastus
   transformation_code_path: src/london_src/transform
   data_path: mlops/london_taxi/data
-  feature_set_spec_path: src/london_src/feature_engineering/feature_set_spec.py
 
 environment_configuration:
   env_base_image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04

@@ -1,5 +1,6 @@
 """
 This module defines a machine learning pipeline for processing, training, and evaluating data.
+
 The pipeline executes the following steps:
 1. Prepare Sample Data: Preprocess raw data.
 2. Feature Engineering: Compute features and store in the feature store.
@@ -12,6 +13,7 @@ The pipeline executes the following steps:
 
 from azure.identity import DefaultAzureCredential
 import argparse
+import os
 from azure.ai.ml.dsl import pipeline
 from azure.ai.ml import MLClient, Input, load_component
 from azureml.featurestore import create_feature_set_spec
