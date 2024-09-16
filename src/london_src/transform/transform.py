@@ -113,7 +113,14 @@ class TaxiDataTransformer(TransformationCode):
         df.drop(["dropoff_datetime"], axis=1, inplace=True)
         return df
 
-    def _define_features(self, clean_data, transformation_code_path, subscription_id, resource_group_name, feature_store_name):
+    def _define_features(
+        self,
+        clean_data,
+        transformation_code_path,
+        subscription_id,
+        resource_group_name,
+        feature_store_name
+    ):
         """
         Define the features for feature store registration.
 
@@ -189,7 +196,14 @@ def get_enriched_data(transformed_data, feature_store_name, subscription_id, res
     return enriched_data
 
 
-def main(clean_data, transformation_code_path, transformed_data, feature_store_name, subscription_id, resource_group_name):
+def main(
+    clean_data,
+    transformation_code_path,
+    transformed_data,
+    feature_store_name,
+    subscription_id,
+    resource_group_name
+):
     """
     Main entry point for transforming and enriching taxi data.
 
@@ -227,5 +241,11 @@ if __name__ == "__main__":
     parser.add_argument("--resource_group_name", type=str, help="Azure resource group name")
 
     args = parser.parse_args()
-    main(args.clean_data, args.transformation_code_path, args.transformed_data_with_features,
-         args.feature_store_name, args.subscription_id, args.resource_group_name)
+    main(
+        args.clean_data,
+        args.transformation_code_path,
+        args.transformed_data_with_features,
+        args.feature_store_name,
+        args.subscription_id,
+        args.resource_group_name
+    )
