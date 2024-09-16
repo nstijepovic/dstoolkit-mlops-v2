@@ -93,7 +93,7 @@ class TaxiDataTransformer(Transformation):
         df["dropoff_second"] = dropoff_temp.second
 
         # Drop unnecessary datetime columns
-        df.drop(["pickup_datetime", "dropoff_datetime"], axis=1, inplace=True)
+        df.drop(["dropoff_datetime"], axis=1, inplace=True)
 
         return df
 
