@@ -11,7 +11,7 @@ feature_store_config:
   name: taxi_feature_store
   online_store_name: myonlinestore
   location: eastus
-  transformation_code_path: src/london_src/transform/transform.py
+  transformation_code_path: src/london_src/transform
   data_path: mlops/london_taxi/data
   feature_set_spec_path: src/london_src/feature_engineering/feature_set_spec.py
 
