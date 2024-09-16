@@ -44,11 +44,25 @@ def main(
       resource_group_name (str): Azure resource group name
     """
     print("Starting training...")
+    lines = [
+        f"Training data path: {training_data}",
+        f"Test data path: {test_data}",
+        f"Model output path: {model_output}",
+        f"Model metadata path: {model_metadata}",
+        f"Feature store name: {feature_store_name}"
+    ]
+
+    for line in lines:
+        print(line)
+
+    print("mounted_path files: ")
+    arr = os.listdir(training_data)
+    print(arr)
 
     # Load training data
     df_list = []
-    for filename in os.listdir(training_data):
-        print(f"Reading file: {filename}")
+    for filename in arr:
+        print("reading file: %s ..." % filename)
         input_df = pd.read_csv((Path(training_data) / filename))
         df_list.append(input_df)
 
