@@ -31,7 +31,9 @@ gl_pipeline_components = []
 
 
 @pipeline()
-def london_taxi_data_regression(pipeline_job_input, model_name, build_reference, transformation_code_path, feature_store_name):
+def london_taxi_data_regression(
+    pipeline_job_input, model_name, build_reference, transformation_code_path, feature_store_name
+):
     """
     Run a pipeline for regression analysis on NYC taxi data.
 
@@ -135,7 +137,7 @@ def construct_pipeline(
     gl_pipeline_components.append(score_data)
     gl_pipeline_components.append(register_model)
 
-    # Now you can use config to get the transformation_code_path
+    # Now you can use config to get the transformation_code_path and feature store name
     transformation_code_path = config.feature_store_config["transformation_code_path"]
     feature_store_name = config.feature_store_config["name"]
 
