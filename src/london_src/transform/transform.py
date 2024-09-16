@@ -1,16 +1,19 @@
 """
 Transform taxi data for training, including feature definition and engineering.
 
-This class is responsible for transforming and preparing taxi data.
-It transforms the input DataFrame and ensures proper data types, feature extraction, and normalization.
-Additionally, it includes logic to define features for feature store registration
-and enrichment with existing features.
+This module is responsible for transforming and preparing taxi data.
+It transforms the input DataFrame and ensures proper data types, feature extraction,
+and normalization. Additionally, it includes logic to define features for feature
+store registration and enrichment with existing features.
 """
 
 import argparse
-import pandas as pd
-import numpy as np
 import os
+from pyspark.sql import SparkSession
+import pyspark.sql.functions as F
+from azure.ai.ml import MLClient
+from azure.identity import DefaultAzureCredential
+from azureml.featurestore import create_feature_set_spec
 from azureml.featurestore.feature_source import CsvFeatureSource
 from azureml.featurestore.contracts import (
     DateTimeOffset,
@@ -19,9 +22,6 @@ from azureml.featurestore.contracts import (
     ColumnType,
     TimestampColumn,
 )
-from azureml.featurestore import create_feature_set_spec
-from azure.identity import DefaultAzureCredential
-from azure.ai.ml import MLClient
 
 
 class TaxiDataTransformer(TransformationCode):
@@ -40,6 +40,7 @@ class TaxiDataTransformer(TransformationCode):
             config: The configuration object containing feature store settings.
         """
         self.config = config
+        self.spark = SparkSession.builder.getOrCreate()
 
     def transform(
         self,
@@ -54,80 +55,89 @@ class TaxiDataTransformer(TransformationCode):
         Apply transformations to the input DataFrame.
 
         Args:
-            df (pandas.DataFrame): Input DataFrame to transform.
+            df (pyspark.sql.DataFrame): Input DataFrame to transform.
             clean_data_path (str): Path to the cleaned data.
             transformation_code_path (str): Path to the transformation code.
+            subscription_id (str): Azure subscription ID.
+            resource_group_name (str): Azure resource group name.
+            feature_store_name (str): Name of the feature store.
 
         Returns:
-            pandas.DataFrame: Transformed DataFrame ready for machine learning.
+            pyspark.sql.DataFrame: Transformed DataFrame ready for machine learning.
             FeatureSetSpecification: Feature set specification for registration.
         """
-        df = self._clean_and_transform_data(df)
+        spark_df = self._clean_and_transform_data(df)
+
         # Define the features and register them in the feature store
         feature_set_spec = self._define_features(
             clean_data_path, transformation_code_path,
-            subscription_id, resource_group_name, feature_store_name
+            subscription_id, resource_group_name, feature_store_name, spark_df
         )
-        return df, feature_set_spec
+        return spark_df, feature_set_spec
 
     def _clean_and_transform_data(self, df):
         """
         Clean and transform the data by filtering, renaming, and feature engineering.
 
         Args:
-            df (pandas.DataFrame): The DataFrame to transform.
+            df (pyspark.sql.DataFrame): The DataFrame to transform.
 
         Returns:
-            pandas.DataFrame: The transformed DataFrame.
+            pyspark.sql.DataFrame: The transformed DataFrame.
         """
-        df = df.astype({
-            "pickup_longitude": "float64",
-            "pickup_latitude": "float64",
-            "dropoff_longitude": "float64",
-            "dropoff_latitude": "float64",
-        })
+        df = df.filter(
+            (F.col("pickup_longitude") <= -73.72)
+            & (F.col("pickup_longitude") >= -74.09)
+            & (F.col("pickup_latitude") <= 40.88)
+            & (F.col("pickup_latitude") >= 40.53)
+            & (F.col("dropoff_longitude") <= -73.72)
+            & (F.col("dropoff_longitude") >= -74.72)
+            & (F.col("dropoff_latitude") <= 40.88)
+            & (F.col("dropoff_latitude") >= 40.53)
+        )
 
-        df = df[
-            (df.pickup_longitude <= -73.72)
-            & (df.pickup_longitude >= -74.09)
-            & (df.pickup_latitude <= 40.88)
-            & (df.pickup_latitude >= 40.53)
-            & (df.dropoff_longitude <= -73.72)
-            & (df.dropoff_longitude >= -74.72)
-            & (df.dropoff_latitude <= 40.88)
-            & (df.dropoff_latitude >= 40.53)
-        ]
-
-        df.reset_index(drop=True, inplace=True)
-        df["store_forward"] = df["store_forward"].replace("0", "N").fillna("N")
-        df["distance"] = df["distance"].replace(".00", 0).fillna(0).astype("float64")
+        df = df.withColumn(
+            "store_forward",
+            F.when(F.col("store_forward") == "0", "N").otherwise(F.col("store_forward"))
+        )
+        df = df.withColumn(
+            "store_forward",
+            F.when(F.col("store_forward").isNull(), "N").otherwise(F.col("store_forward"))
+        )
+        df = df.withColumn(
+            "distance",
+            F.when(F.col("distance") == ".00", 0).otherwise(F.col("distance"))
+        )
+        df = df.withColumn("distance", F.col("distance").cast("float"))
 
         df = self._add_datetime_features(df)
-        df["store_forward"] = np.where(df["store_forward"] == "N", 0, 1)
-        df = df[(df["distance"] > 0) & (df["cost"] > 0)]
+        df = df.withColumn(
+            "store_forward",
+            F.when(F.col("store_forward") == "N", 0).otherwise(1)
+        )
+        df = df.filter((F.col("distance") > 0) & (F.col("cost") > 0))
 
-        df.reset_index(drop=True, inplace=True)
         return df
 
     def _add_datetime_features(self, df):
         """Add date and time features to the DataFrame."""
-        pickup_temp = pd.DatetimeIndex(df["pickup_datetime"], dtype="datetime64[ns]")
-        df["pickup_weekday"] = pickup_temp.dayofweek
-        df["pickup_month"] = pickup_temp.month
-        df["pickup_monthday"] = pickup_temp.day
-        df["pickup_hour"] = pickup_temp.hour
-        df["pickup_minute"] = pickup_temp.minute
-        df["pickup_second"] = pickup_temp.second
+        df = df.withColumn("pickup_datetime", F.to_timestamp("pickup_datetime"))
+        df = df.withColumn("pickup_weekday", F.dayofweek("pickup_datetime"))
+        df = df.withColumn("pickup_month", F.month("pickup_datetime"))
+        df = df.withColumn("pickup_monthday", F.dayofmonth("pickup_datetime"))
+        df = df.withColumn("pickup_hour", F.hour("pickup_datetime"))
+        df = df.withColumn("pickup_minute", F.minute("pickup_datetime"))
+        df = df.withColumn("pickup_second", F.second("pickup_datetime"))
 
-        dropoff_temp = pd.DatetimeIndex(df["dropoff_datetime"], dtype="datetime64[ns]")
-        df["dropoff_weekday"] = dropoff_temp.dayofweek
-        df["dropoff_month"] = dropoff_temp.month
-        df["dropoff_monthday"] = dropoff_temp.day
-        df["dropoff_hour"] = dropoff_temp.hour
-        df["dropoff_minute"] = dropoff_temp.minute
-        df["dropoff_second"] = dropoff_temp.second
+        df = df.withColumn("dropoff_datetime", F.to_timestamp("dropoff_datetime"))
+        df = df.withColumn("dropoff_weekday", F.dayofweek("dropoff_datetime"))
+        df = df.withColumn("dropoff_month", F.month("dropoff_datetime"))
+        df = df.withColumn("dropoff_monthday", F.dayofmonth("dropoff_datetime"))
+        df = df.withColumn("dropoff_hour", F.hour("dropoff_datetime"))
+        df = df.withColumn("dropoff_minute", F.minute("dropoff_datetime"))
+        df = df.withColumn("dropoff_second", F.second("dropoff_datetime"))
 
-        df.drop(["dropoff_datetime"], axis=1, inplace=True)
+        df = df.drop("dropoff_datetime")
         return df
 
     def _define_features(
@@ -136,7 +146,8 @@ class TaxiDataTransformer(TransformationCode):
         transformation_code_path,
         subscription_id,
         resource_group_name,
-        feature_store_name
+        feature_store_name,
+        spark_df
     ):
         """
         Define the features for feature store registration.
@@ -147,6 +158,7 @@ class TaxiDataTransformer(TransformationCode):
             subscription_id (str): Azure subscription ID.
             resource_group_name (str): Azure resource group name.
             feature_store_name (str): Name of the feature store.
+            spark_df (pyspark.sql.DataFrame): The transformed Spark DataFrame.
 
         Returns:
             FeatureSetSpecification: The feature set specification for registration.
@@ -191,13 +203,13 @@ def get_enriched_data(
     Enrich the transformed data by pulling features from the Azure Feature Store.
 
     Parameters:
-    transformed_data (pd.DataFrame): The transformed DataFrame that needs to be enriched.
+    transformed_data (pyspark.sql.DataFrame): The transformed DataFrame to be enriched.
     feature_store_name (str): The name of the feature store.
     subscription_id (str): Azure subscription ID.
     resource_group_name (str): Azure resource group name.
 
     Returns:
-    pd.DataFrame: The enriched DataFrame with additional features from the feature store.
+    pyspark.sql.DataFrame: The enriched DataFrame with additional features.
     """
     # Initialize the Azure ML client
     fs_client = MLClient(
@@ -209,7 +221,7 @@ def get_enriched_data(
     # Retrieve the feature set from the feature store
     feature_set = fs_client.feature_sets.get(name=feature_store_name, version="latest")
 
-    # Assuming that "vendorID" is the key column to join the feature store data with the transformed data
+    # Assuming "vendorID" is the key column to join with the transformed data
     enriched_data = feature_set.join_on(transformed_data, join_column="vendorID")
 
     return enriched_data
@@ -234,16 +246,14 @@ def main(
         subscription_id (str): Azure subscription ID.
         resource_group_name (str): Azure resource group name.
     """
+    spark = SparkSession.builder.getOrCreate()
+
     # Check if the input is a directory, and read all CSV files
     if os.path.isdir(clean_data):
-        # Loop through files in the directory and read the CSVs
-        csv_files = [os.path.join(clean_data, f) for f in os.listdir(clean_data) if f.endswith('.csv')]
-        if len(csv_files) == 0:
-            raise FileNotFoundError(f"No CSV files found in directory: {clean_data}")
-        # You can combine the CSVs if there are multiple, or just read the first one
-        df = pd.concat([pd.read_csv(file) for file in csv_files], ignore_index=True)
+        # Read CSV files using Spark
+        df = spark.read.csv(clean_data, header=True, inferSchema=True)
     else:
-        df = pd.read_csv(clean_data)
+        df = spark.read.csv(clean_data, header=True, inferSchema=True)
 
     # Transform the data
     transformer = TaxiDataTransformer(config={})
@@ -258,7 +268,7 @@ def main(
     )
 
     # Save the final transformed and enriched data
-    transformed_data_with_features.to_csv(transformed_data, index=False)
+    transformed_data_with_features.write.csv(transformed_data, header=True, mode="overwrite")
 
     return transformed_data_with_features, feature_set_spec
 
@@ -275,10 +285,18 @@ if __name__ == "__main__":
     parser.add_argument("--feature_store_name", type=str, help="Name of the feature store")
     parser.add_argument("--subscription_id", type=str, help="Azure subscription ID")
     parser.add_argument("--resource_group_name", type=str, help="Azure resource group name")
-    parser.add_argument("--feature_set_specification", type=str,
-                        help="Path to the feature set specification", required=False)
-    parser.add_argument("--registered_feature_set", type=str,
-                        help="Path to the registered feature set", required=False)
+    parser.add_argument(
+        "--feature_set_specification",
+        type=str,
+        help="Path to the feature set specification",
+        required=False
+    )
+    parser.add_argument(
+        "--registered_feature_set",
+        type=str,
+        help="Path to the registered feature set",
+        required=False
+    )
 
     args = parser.parse_args()
     main(
