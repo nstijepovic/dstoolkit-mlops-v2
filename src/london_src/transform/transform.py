@@ -41,7 +41,15 @@ class TaxiDataTransformer(TransformationCode):
         """
         self.config = config
 
-    def transform(self, df, clean_data_path, transformation_code_path):
+    def transform(
+        self,
+        df,
+        clean_data_path,
+        transformation_code_path,
+        subscription_id,
+        resource_group_name,
+        feature_store_name
+    ):
         """
         Apply transformations to the input DataFrame.
 
@@ -55,8 +63,11 @@ class TaxiDataTransformer(TransformationCode):
             FeatureSetSpecification: Feature set specification for registration.
         """
         df = self._clean_and_transform_data(df)
+        # Define the features and register them in the feature store
         feature_set_spec = self._define_features(
-            clean_data_path, transformation_code_path)
+            clean_data_path, transformation_code_path,
+            subscription_id, resource_group_name, feature_store_name
+        )
         return df, feature_set_spec
 
     def _clean_and_transform_data(self, df):
@@ -237,7 +248,8 @@ def main(
     # Transform the data
     transformer = TaxiDataTransformer(config={})
     transformed_df, feature_set_spec = transformer.transform(
-        df, clean_data, transformation_code_path
+        df, clean_data, transformation_code_path,
+        subscription_id, resource_group_name, feature_store_name
     )
 
     # Enrich the data from the feature store
