@@ -85,14 +85,14 @@ def define_features(ml_client, feature_store, config):
     feature_set_spec = create_feature_set_spec(
         source=CsvFeatureSource(
             path=config.feature_store_config["data_path"],
-            timestamp_column=TimestampColumn(name="timestamp"),
+            timestamp_column=TimestampColumn(name="lpepPickupDatetime"),
             source_delay=DateTimeOffset(days=0, hours=0, minutes=20),
         ),
         transformation_code=TransformationCode(
             path=config.feature_store_config["transformation_code_path"],
             transformer_class="transaction_transform.TransactionFeatureTransformer",
         ),
-        index_columns=[Column(name="accountID", type=ColumnType.string)],
+        index_columns=[Column(name="vendorID", type=ColumnType.string)],
         source_lookback=DateTimeOffset(days=7, hours=0, minutes=0),
         temporal_join_lookback=DateTimeOffset(days=1, hours=0, minutes=0),
         infer_schema=True,
