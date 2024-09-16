@@ -1,32 +1,69 @@
 """
-Transform and prepare taxi data for training.
+Transform and prepare taxi data for training, including feature definition and engineering.
 
 This class is responsible for transforming and preparing taxi data.
 It transforms the input DataFrame and ensures proper data types, feature extraction, and normalization.
+Additionally, it includes logic to define features for feature store registration.
 """
 
 import pandas as pd
 import numpy as np
 from azureml.featurestore.contracts import Transformation
+from azureml.featurestore.feature_source import CsvFeatureSource
+from azureml.featurestore.contracts import (
+    DateTimeOffset,
+    TransformationCode,
+    Column,
+    ColumnType,
+    TimestampColumn,
+)
+from azureml.featurestore import create_feature_set_spec
+from azure.identity import DefaultAzureCredential
+from azure.ai.ml import MLClient
+from mlops.common.config_utils import MLOpsConfig
 
 
 class TaxiDataTransformer(Transformation):
     """
-    Transform taxi data for feature store.
+    Transform taxi data for feature store and machine learning.
 
     This class implements data cleaning, feature engineering, and normalization for
-    the input DataFrame to prepare it for machine learning models.
+    the input DataFrame, as well as defining features for feature store registration.
     """
 
-    def transform(self, df):
+    def __init__(self, config):
+        self.config = config
+
+    def transform(self, df, clean_data_path, transformation_code_path):
         """
         Apply transformations to the input DataFrame.
 
         Parameters:
             df (pandas.DataFrame): Input DataFrame to transform.
+            clean_data_path (str): Path to the cleaned data.
+            transformation_code_path (str): Path to the transformation code.
 
         Returns:
             pandas.DataFrame: Transformed DataFrame ready for machine learning.
+            FeatureSetSpecification: The feature set specification for registration.
+        """
+        # Clean and transform the data
+        df = self._clean_and_transform_data(df)
+
+        # Define the features and register them in the feature store
+        feature_set_spec = self._define_features(clean_data_path, transformation_code_path)
+
+        return df, feature_set_spec
+
+    def _clean_and_transform_data(self, df):
+        """
+        Clean and transform the data by filtering, renaming, and feature engineering.
+
+        Args:
+            df (pandas.DataFrame): The DataFrame to transform.
+
+        Returns:
+            pandas.DataFrame: The transformed DataFrame.
         """
         # Ensure correct data types for lat/long fields
         df = df.astype({
@@ -67,9 +104,6 @@ class TaxiDataTransformer(Transformation):
         """
         Add date and time features to the DataFrame.
 
-        Extract additional features like day of the week, month, and time components
-        from the pickup and dropoff datetime fields.
-
         Args:
             df (pandas.DataFrame): The DataFrame to transform.
 
@@ -92,179 +126,56 @@ class TaxiDataTransformer(Transformation):
         df["dropoff_minute"] = dropoff_temp.minute
         df["dropoff_second"] = dropoff_temp.second
 
-        # Drop unnecessary datetime columns
         df.drop(["dropoff_datetime"], axis=1, inplace=True)
-
         return df
 
+    def _define_features(self, clean_data_path, transformation_code_path):
+        """
+        Define the features for feature store registration.
 
-# """This module is responsible for transforming and preparing taxi data."""
+        Args:
+            clean_data_path (str): Path to the cleaned data.
+            transformation_code_path (str): Path to the transformation code.
 
-# import argparse
-# from pathlib import Path
-# import os
-# import pandas as pd
-# import numpy as np
+        Returns:
+            FeatureSetSpecification: The feature set specification for registration.
+        """
+        # Load the configuration
+        config = MLOpsConfig()
 
+        # Initialize the feature store client
+        fs_client = MLClient(
+            DefaultAzureCredential(),
+            config.feature_store_config["subscription_id"],
+            config.feature_store_config["resource_group_name"],
+            feature_store_name=config.feature_store_config["name"]
+        )
 
-# def main(clean_data, transformed_data):
-#     """
-#     Initiate transformation and save results into csv file.
+        # Define the feature set spec
+        feature_set_spec = create_feature_set_spec(
+            source=CsvFeatureSource(
+                path=clean_data_path,
+                timestamp_column=TimestampColumn(name="pickup_datetime"),
+                source_delay=DateTimeOffset(days=0, hours=0, minutes=20),
+            ),
+            transformation_code=TransformationCode(
+                path=transformation_code_path,
+                transformer_class="TaxiDataTransformer",
+            ),
+            index_columns=[Column(name="vendorID", type=ColumnType.string)],
+            source_lookback=DateTimeOffset(days=7, hours=0, minutes=0),
+            temporal_join_lookback=DateTimeOffset(days=1, hours=0, minutes=0),
+            infer_schema=True,
+        )
 
-#     Parameters:
-#       clean_data (str): a folder to store results
-#       transformed_data (DataFrame): an initial data frame for transformation
-#     """
-#     lines = [
-#         f"Clean data path: {clean_data}",
-#         f"Transformed data output path: {transformed_data}",
-#     ]
+        # Register the feature set with the feature store
+        feature_set_name = "london_taxi_features"
+        entity_name = "taxi_trip"
+        poller = fs_client.feature_sets.begin_create_or_update(
+            name=feature_set_name,
+            feature_set_spec=feature_set_spec,
+            entity_name=entity_name,
+        )
+        feature_set = poller.result()
 
-#     for line in lines:
-#         print(line)
-
-#     print("mounted_path files: ")
-#     arr = os.listdir(clean_data)
-#     print(arr)
-
-#     df_list = []
-#     for filename in arr:
-#         print("reading file: %s ..." % filename)
-#         input_df = pd.read_csv((Path(clean_data) / filename))
-#         df_list.append(input_df)
-
-#     # Transform the data
-#     combined_df = df_list[1]
-#     final_df = transform_data(combined_df)
-
-#     # Output data
-#     final_df.to_csv((Path(args.transformed_data) / "transformed_data.csv"))
-
-
-# # These functions filter out coordinates for locations that are outside the city border.
-
-# # Filter out coordinates for locations that are outside the city border.
-# # Chain the column filter commands within the filter() function
-# # and define the minimum and maximum bounds for each field
-
-
-# def transform_data(combined_df):
-#     """
-#     Transform a dataframe to prepare it for training.
-
-#     The method is implementing data cleaning and normalization
-
-#     Parameters:
-#       combined_df (pandas.DataFrame): incoming data frame
-
-#     Returns:
-#         DataFrame: transformed data frame
-#     """
-#     combined_df = combined_df.astype(
-#         {
-#             "pickup_longitude": "float64",
-#             "pickup_latitude": "float64",
-#             "dropoff_longitude": "float64",
-#             "dropoff_latitude": "float64",
-#         }
-#     )
-
-#     latlong_filtered_df = combined_df[
-#         (combined_df.pickup_longitude <= -73.72)
-#         & (combined_df.pickup_longitude >= -74.09)
-#         & (combined_df.pickup_latitude <= 40.88)
-#         & (combined_df.pickup_latitude >= 40.53)
-#         & (combined_df.dropoff_longitude <= -73.72)
-#         & (combined_df.dropoff_longitude >= -74.72)
-#         & (combined_df.dropoff_latitude <= 40.88)
-#         & (combined_df.dropoff_latitude >= 40.53)
-#     ]
-
-#     latlong_filtered_df.reset_index(inplace=True, drop=True)
-
-#     # These functions replace undefined values and rename to use meaningful names.
-#     replaced_stfor_vals_df = latlong_filtered_df.replace(
-#         {"store_forward": "0"}, {"store_forward": "N"}
-#     ).fillna({"store_forward": "N"})
-
-#     replaced_distance_vals_df = replaced_stfor_vals_df.replace(
-#         {"distance": ".00"}, {"distance": 0}
-#     ).fillna({"distance": 0})
-
-#     normalized_df = replaced_distance_vals_df.astype({"distance": "float64"})
-
-#     # These functions transform the renamed data to be used finally for training.
-
-#     # Split the pickup and dropoff date further into the day of the week, day of the month, and month values.
-#     # To get the day of the week value, use the derive_column_by_example() function.
-#     # The function takes an array parameter of example objects that define the input data,
-#     # and the preferred output. The function automatically determines your preferred transformation.
-#     # For the pickup and dropoff time columns, split the time into the hour, minute, and second by using
-#     # the split_column_by_example() function with no example parameter. After you generate the new features,
-#     # use the drop_columns() function to delete the original fields as the newly generated features are preferred.
-#     # Rename the rest of the fields to use meaningful descriptions.
-
-#     temp = pd.DatetimeIndex(normalized_df["pickup_datetime"], dtype="datetime64[ns]")
-#     normalized_df["pickup_date"] = temp.date
-#     normalized_df["pickup_weekday"] = temp.dayofweek
-#     normalized_df["pickup_month"] = temp.month
-#     normalized_df["pickup_monthday"] = temp.day
-#     normalized_df["pickup_time"] = temp.time
-#     normalized_df["pickup_hour"] = temp.hour
-#     normalized_df["pickup_minute"] = temp.minute
-#     normalized_df["pickup_second"] = temp.second
-
-#     temp = pd.DatetimeIndex(normalized_df["dropoff_datetime"], dtype="datetime64[ns]")
-#     normalized_df["dropoff_date"] = temp.date
-#     normalized_df["dropoff_weekday"] = temp.dayofweek
-#     normalized_df["dropoff_month"] = temp.month
-#     normalized_df["dropoff_monthday"] = temp.day
-#     normalized_df["dropoff_time"] = temp.time
-#     normalized_df["dropoff_hour"] = temp.hour
-#     normalized_df["dropoff_minute"] = temp.minute
-#     normalized_df["dropoff_second"] = temp.second
-
-#     del normalized_df["pickup_datetime"]
-#     del normalized_df["dropoff_datetime"]
-
-#     normalized_df.reset_index(inplace=True, drop=True)
-
-#     print(normalized_df.head)
-#     print(normalized_df.dtypes)
-
-#     # Drop the pickup_date, dropoff_date, pickup_time, dropoff_time columns because they're
-#     # no longer needed (granular time features like hour,
-#     # minute and second are more useful for model training).
-#     del normalized_df["pickup_date"]
-#     del normalized_df["dropoff_date"]
-#     del normalized_df["pickup_time"]
-#     del normalized_df["dropoff_time"]
-
-#     # Change the store_forward column to binary values
-#     normalized_df["store_forward"] = np.where(
-#         (normalized_df.store_forward == "N"), 0, 1
-#     )
-
-#     # Before you package the dataset, run two final filters on the dataset.
-#     # To eliminate incorrectly captured data points,
-#     # filter the dataset on records where both the cost and distance variable values are greater than zero.
-#     # This step will significantly improve machine learning model accuracy,
-#     # because data points with a zero cost or distance represent major outliers that throw off prediction accuracy.
-
-#     final_df = normalized_df[(normalized_df.distance > 0) & (normalized_df.cost > 0)]
-#     final_df.reset_index(inplace=True, drop=True)
-#     print(final_df.head)
-
-#     return final_df
-
-
-# # if __name__ == "__main__":
-# #     parser = argparse.ArgumentParser("transform")
-# #     parser.add_argument("--clean_data", type=str, help="Path to prepped data")
-# #     parser.add_argument("--transformed_data", type=str, help="Path of output data")
-
-# #     args = parser.parse_args()
-
-# #     clean_data = args.clean_data
-# #     transformed_data = args.transformed_data
-# #     main(clean_data, transformed_data)
+        return feature_set_spec, feature_set
