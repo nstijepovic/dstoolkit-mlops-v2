@@ -10,7 +10,7 @@ store registration and enrichment with existing features.
 import argparse
 import os
 from pyspark.sql import SparkSession
-import pyspark.sql.functions as F
+import pyspark.sql.functions as f
 from azure.ai.ml import MLClient
 from azure.identity import DefaultAzureCredential
 from azureml.featurestore import create_feature_set_spec
@@ -86,14 +86,14 @@ class TaxiDataTransformer(TransformationCode):
             pyspark.sql.DataFrame: The transformed DataFrame.
         """
         df = df.filter(
-            (F.col("pickup_longitude") <= -73.72)
-            & (F.col("pickup_longitude") >= -74.09)
-            & (F.col("pickup_latitude") <= 40.88)
-            & (F.col("pickup_latitude") >= 40.53)
-            & (F.col("dropoff_longitude") <= -73.72)
-            & (F.col("dropoff_longitude") >= -74.72)
-            & (F.col("dropoff_latitude") <= 40.88)
-            & (F.col("dropoff_latitude") >= 40.53)
+            (f.col("pickup_longitude") <= -73.72)
+            & (f.col("pickup_longitude") >= -74.09)
+            & (f.col("pickup_latitude") <= 40.88)
+            & (f.col("pickup_latitude") >= 40.53)
+            & (f.col("dropoff_longitude") <= -73.72)
+            & (f.col("dropoff_longitude") >= -74.72)
+            & (f.col("dropoff_latitude") <= 40.88)
+            & (f.col("dropoff_latitude") >= 40.53)
         )
 
         df = df.withColumn(
