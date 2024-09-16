@@ -18,4 +18,3 @@ command: >-
   --predictions ${{inputs.predictions}} 
   --model ${{inputs.model}} 
   --score_report ${{outputs.score_report}}
-  --feature_store_name ${{inputs.feature_store_name}}

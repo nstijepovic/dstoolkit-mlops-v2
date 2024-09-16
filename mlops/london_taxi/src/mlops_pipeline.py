@@ -64,7 +64,6 @@ def london_taxi_data_regression(
     score_with_sample_data = gl_pipeline_components[4](
         predictions=predict_with_sample_data.outputs.predictions,
         model=train_with_sample_data.outputs.model_output,
-        feature_store_name=feature_store_name,
     )
     gl_pipeline_components[5](
         model_metadata=train_with_sample_data.outputs.model_metadata,
