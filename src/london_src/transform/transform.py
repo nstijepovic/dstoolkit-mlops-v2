@@ -19,7 +19,6 @@ from azureml.featurestore.contracts import (
 from azureml.featurestore import create_feature_set_spec
 from azure.identity import DefaultAzureCredential
 from azure.ai.ml import MLClient
-from mlops.common.config_utils import MLOpsConfig
 
 
 class TaxiDataTransformer(TransformationCode):
@@ -108,12 +107,6 @@ class TaxiDataTransformer(TransformationCode):
     def _add_datetime_features(self, df):
         """
         Add date and time features to the DataFrame.
-
-        Args:
-            df (pandas.DataFrame): The DataFrame to transform.
-
-        Returns:
-            pandas.DataFrame: DataFrame with new date/time features.
         """
         pickup_temp = pd.DatetimeIndex(df["pickup_datetime"], dtype="datetime64[ns]")
         df["pickup_weekday"] = pickup_temp.dayofweek
@@ -134,18 +127,23 @@ class TaxiDataTransformer(TransformationCode):
         df.drop(["dropoff_datetime"], axis=1, inplace=True)
         return df
 
-    def _define_features(self, clean_data_path, transformation_code_path, subscription_id, resource_group_name, feature_store_name):
+    def _define_features(
+        self, clean_data_path, transformation_code_path,
+        subscription_id, resource_group_name, feature_store_name
+    ):
         """
         Define the features for feature store registration.
 
         Args:
             clean_data_path (str): Path to the cleaned data.
             transformation_code_path (str): Path to the transformation code.
+            subscription_id (str): Azure subscription ID.
+            resource_group_name (str): Azure resource group name.
+            feature_store_name (str): Name of the feature store.
 
         Returns:
             FeatureSetSpecification: The feature set specification for registration.
         """
-
         # Initialize the feature store client
         fs_client = MLClient(
             DefaultAzureCredential(),
