@@ -253,6 +253,10 @@ if __name__ == "__main__":
     parser.add_argument("--feature_store_name", type=str, help="Name of the feature store")
     parser.add_argument("--subscription_id", type=str, help="Azure subscription ID")
     parser.add_argument("--resource_group_name", type=str, help="Azure resource group name")
+    parser.add_argument("--feature_set_specification", type=str,
+                        help="Path to the feature set specification", required=False)
+    parser.add_argument("--registered_feature_set", type=str,
+                        help="Path to the registered feature set", required=False)
 
     args = parser.parse_args()
     main(
