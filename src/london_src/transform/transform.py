@@ -105,9 +105,8 @@ class TaxiDataTransformer(TransformationCode):
         return df
 
     def _add_datetime_features(self, df):
-        """
-        Add date and time features to the DataFrame.
-        """
+        """Add date and time features to the DataFrame."""
+
         pickup_temp = pd.DatetimeIndex(df["pickup_datetime"], dtype="datetime64[ns]")
         df["pickup_weekday"] = pickup_temp.dayofweek
         df["pickup_month"] = pickup_temp.month
