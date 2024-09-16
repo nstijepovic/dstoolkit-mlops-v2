@@ -33,7 +33,7 @@ from azure.ai.ml.entities import (
     FeatureStoreEntity,
 )
 from azureml.featurestore import create_feature_set_spec
-from azureml.featurestore.feature_source import ParquetFeatureSource
+from azureml.featurestore.feature_source import CsvFeatureSource
 from azureml.featurestore.contracts import (
     DateTimeOffset,
     TransformationCode,
@@ -83,7 +83,7 @@ def define_features(ml_client, feature_store, config):
         FeatureSetSpecification: The defined feature set specification.
     """
     feature_set_spec = create_feature_set_spec(
-        source=ParquetFeatureSource(
+        source=CsvFeatureSource(
             path=config.feature_store_config["data_path"],
             timestamp_column=TimestampColumn(name="timestamp"),
             source_delay=DateTimeOffset(days=0, hours=0, minutes=20),
