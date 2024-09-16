@@ -10,6 +10,7 @@ and enrichment with existing features.
 import argparse
 import pandas as pd
 import numpy as np
+import os
 from azureml.featurestore.feature_source import CsvFeatureSource
 from azureml.featurestore.contracts import (
     DateTimeOffset,
@@ -222,7 +223,16 @@ def main(
         subscription_id (str): Azure subscription ID.
         resource_group_name (str): Azure resource group name.
     """
-    df = pd.read_csv(clean_data)
+    # Check if the input is a directory, and if so, read all CSV files
+    if os.path.isdir(clean_data):
+        # Loop through files in the directory and read the CSVs
+        csv_files = [os.path.join(clean_data, f) for f in os.listdir(clean_data) if f.endswith('.csv')]
+        if len(csv_files) == 0:
+            raise FileNotFoundError(f"No CSV files found in directory: {clean_data}")
+        # You can combine the CSVs if there are multiple, or just read the first one
+        df = pd.concat([pd.read_csv(file) for file in csv_files], ignore_index=True)
+    else:
+        df = pd.read_csv(clean_data)
 
     # Transform the data
     transformer = TaxiDataTransformer(config={})
