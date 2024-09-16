@@ -140,6 +140,7 @@ def construct_pipeline(
         Input(type="uri_folder", path=registered_data_asset.id),
         model_name,
         build_reference,
+        transformation_code_path=transformation_code_path
     )
 
     pipeline_job.display_name = display_name

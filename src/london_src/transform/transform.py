@@ -32,6 +32,12 @@ class TaxiDataTransformer(Transformation):
     """
 
     def __init__(self, config):
+        """
+        Initialize TaxiDataTransformer with a configuration object.
+
+        Args:
+            config: The configuration object containing feature store settings.
+        """
         self.config = config
 
     def transform(self, df, clean_data_path, transformation_code_path):
