@@ -127,7 +127,7 @@ class TaxiDataTransformer(TransformationCode):
         df = df.withColumn("pickup_monthday", f.dayofmonth("pickup_datetime"))
         df = df.withColumn("pickup_hour", f.hour("pickup_datetime"))
         df = df.withColumn("pickup_minute", f.minute("pickup_datetime"))
-        df = df.withColumn("pickup_second", F.second("pickup_datetime"))
+        df = df.withColumn("pickup_second", f.second("pickup_datetime"))
 
         df = df.withColumn("dropoff_datetime", f.to_timestamp("dropoff_datetime"))
         df = df.withColumn("dropoff_weekday", f.dayofweek("dropoff_datetime"))
