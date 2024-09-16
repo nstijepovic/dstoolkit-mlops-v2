@@ -145,8 +145,6 @@ def construct_pipeline(
         Input(type="uri_folder", path=registered_data_asset.id),
         model_name,
         build_reference,
-        subscription_id=config.feature_store_config["subscription_id"],
-        resource_group_name=config.feature_store_config["resource_group_name"],
         transformation_code_path=config.feature_store_config["transformation_code_path"],
         feature_store_name=config.feature_store_config["name"]
     )
