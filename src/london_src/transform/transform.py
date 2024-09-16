@@ -76,10 +76,14 @@ class TaxiDataTransformer(TransformationCode):
         })
 
         df = df[
-            (df.pickup_longitude <= -73.72) & (df.pickup_longitude >= -74.09) &
-            (df.pickup_latitude <= 40.88) & (df.pickup_latitude >= 40.53) &
-            (df.dropoff_longitude <= -73.72) & (df.dropoff_longitude >= -74.72) &
-            (df.dropoff_latitude <= 40.88) & (df.dropoff_latitude >= 40.53)
+            (df.pickup_longitude <= -73.72)
+            & (df.pickup_longitude >= -74.09)
+            & (df.pickup_latitude <= 40.88)
+            & (df.pickup_latitude >= 40.53)
+            & (df.dropoff_longitude <= -73.72)
+            & (df.dropoff_longitude >= -74.72)
+            & (df.dropoff_latitude <= 40.88)
+            & (df.dropoff_latitude >= 40.53)
         ]
 
         df.reset_index(drop=True, inplace=True)
