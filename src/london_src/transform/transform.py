@@ -223,7 +223,7 @@ def main(
         subscription_id (str): Azure subscription ID.
         resource_group_name (str): Azure resource group name.
     """
-    # Check if the input is a directory, and if so, read all CSV files
+    # Check if the input is a directory, and read all CSV files
     if os.path.isdir(clean_data):
         # Loop through files in the directory and read the CSVs
         csv_files = [os.path.join(clean_data, f) for f in os.listdir(clean_data) if f.endswith('.csv')]
