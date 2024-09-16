@@ -6,6 +6,7 @@ It transforms the input DataFrame and ensures proper data types, feature extract
 Additionally, it includes logic to define features for feature store registration.
 """
 
+import argparse
 import pandas as pd
 import numpy as np
 from azureml.featurestore.feature_source import CsvFeatureSource
@@ -126,14 +127,14 @@ class TaxiDataTransformer(TransformationCode):
         return df
 
     def _define_features(
-        self, clean_data_path, transformation_code_path,
+        self, clean_data, transformation_code_path,
         subscription_id, resource_group_name, feature_store_name
     ):
         """
         Define the features for feature store registration.
 
         Args:
-            clean_data_path (str): Path to the cleaned data.
+            clean_data (str): Path to the cleaned data.
             transformation_code_path (str): Path to the transformation code.
             subscription_id (str): Azure subscription ID.
             resource_group_name (str): Azure resource group name.
@@ -153,7 +154,7 @@ class TaxiDataTransformer(TransformationCode):
         # Define the feature set spec
         feature_set_spec = create_feature_set_spec(
             source=CsvFeatureSource(
-                path=clean_data_path,
+                path=clean_data,
                 timestamp_column=TimestampColumn(name="pickup_datetime"),
                 source_delay=DateTimeOffset(days=0, hours=0, minutes=20),
             ),
@@ -178,3 +179,42 @@ class TaxiDataTransformer(TransformationCode):
         feature_set = poller.result()
 
         return feature_set_spec, feature_set
+
+
+def main(clean_data, transformation_code_path, transformed_data):
+    """
+    Main entry point for transforming taxi data and saving results.
+
+    Args:
+        clean_data (str): Path to the cleaned data.
+        transformation_code_path (str): Path to the transformation code.
+        transformed_data (str): Path to save the transformed data.
+    """
+    # Load the cleaned data
+    df = pd.read_csv(clean_data)
+
+    # Initialize TaxiDataTransformer with configuration
+    config = {}  # Configuration should be provided here
+    transformer = TaxiDataTransformer(config)
+
+    # Transform data and retrieve feature set specification
+    transformed_df, feature_set_spec = transformer.transform(df, clean_data, transformation_code_path)
+
+    # Save the transformed data
+    transformed_df.to_csv(transformed_data, index=False)
+
+    return transformed_df, feature_set_spec
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser("transform")
+    parser.add_argument("--clean_data", type=str, help="Path to prepped data")
+    parser.add_argument("--transformation_code_path", type=str, help="Path of output data")
+    parser.add_argument("--transformed_data", type=str, help="Path of output data")
+
+    args = parser.parse_args()
+    clean_data = args.clean_data
+    transformation_code_path = args.transformation_code_path
+    transformed_data = args.transformed_data
+    main(clean_data, transformation_code_path, transformed_data)
