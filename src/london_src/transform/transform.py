@@ -1,5 +1,5 @@
 """
-Transform and prepare taxi data for training, including feature definition and engineering.
+Transform taxi data for training, including feature definition and engineering.
 
 This class is responsible for transforming and preparing taxi data.
 It transforms the input DataFrame and ensures proper data types, feature extraction, and normalization.
@@ -134,7 +134,7 @@ class TaxiDataTransformer(TransformationCode):
         df.drop(["dropoff_datetime"], axis=1, inplace=True)
         return df
 
-    def _define_features(self, clean_data_path, transformation_code_path):
+    def _define_features(self, clean_data_path, transformation_code_path, subscription_id, resource_group_name, feature_store_name):
         """
         Define the features for feature store registration.
 
@@ -145,15 +145,13 @@ class TaxiDataTransformer(TransformationCode):
         Returns:
             FeatureSetSpecification: The feature set specification for registration.
         """
-        # Load the configuration
-        config = MLOpsConfig()
 
         # Initialize the feature store client
         fs_client = MLClient(
             DefaultAzureCredential(),
-            config.feature_store_config["subscription_id"],
-            config.feature_store_config["resource_group_name"],
-            feature_store_name=config.feature_store_config["name"]
+            subscription_id=subscription_id,
+            resource_group_name=resource_group_name,
+            feature_store_name=feature_store_name
         )
 
         # Define the feature set spec

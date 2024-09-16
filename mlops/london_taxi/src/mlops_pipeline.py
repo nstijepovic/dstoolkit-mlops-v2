@@ -137,16 +137,18 @@ def construct_pipeline(
     gl_pipeline_components.append(score_data)
     gl_pipeline_components.append(register_model)
 
-    # Now you can use config to get the transformation_code_path and feature store name
-    transformation_code_path = config.feature_store_config["transformation_code_path"]
-    feature_store_name = config.feature_store_config["name"]
+    # # Now you can use config to get the transformation_code_path and feature store name
+    # transformation_code_path = config.feature_store_config["transformation_code_path"]
+    # feature_store_name = config.feature_store_config["name"]
 
     pipeline_job = london_taxi_data_regression(
         Input(type="uri_folder", path=registered_data_asset.id),
         model_name,
         build_reference,
-        transformation_code_path=transformation_code_path,
-        feature_store_name=feature_store_name
+        subscription_id=config.feature_store_config["subscription_id"],
+        resource_group_name=config.feature_store_config["resource_group_name"],
+        transformation_code_path=config.feature_store_config["transformation_code_path"],
+        feature_store_name=config.feature_store_config["name"]
     )
 
     pipeline_job.display_name = display_name
