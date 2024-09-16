@@ -98,44 +98,44 @@ class TaxiDataTransformer(TransformationCode):
 
         df = df.withColumn(
             "store_forward",
-            F.when(F.col("store_forward") == "0", "N").otherwise(F.col("store_forward"))
+            f.when(f.col("store_forward") == "0", "N").otherwise(f.col("store_forward"))
         )
         df = df.withColumn(
             "store_forward",
-            F.when(F.col("store_forward").isNull(), "N").otherwise(F.col("store_forward"))
+            f.when(f.col("store_forward").isNull(), "N").otherwise(f.col("store_forward"))
         )
         df = df.withColumn(
             "distance",
-            F.when(F.col("distance") == ".00", 0).otherwise(F.col("distance"))
+            f.when(f.col("distance") == ".00", 0).otherwise(f.col("distance"))
         )
-        df = df.withColumn("distance", F.col("distance").cast("float"))
+        df = df.withColumn("distance", f.col("distance").cast("float"))
 
         df = self._add_datetime_features(df)
         df = df.withColumn(
             "store_forward",
-            F.when(F.col("store_forward") == "N", 0).otherwise(1)
+            f.when(f.col("store_forward") == "N", 0).otherwise(1)
         )
-        df = df.filter((F.col("distance") > 0) & (F.col("cost") > 0))
+        df = df.filter((f.col("distance") > 0) & (f.col("cost") > 0))
 
         return df
 
     def _add_datetime_features(self, df):
         """Add date and time features to the DataFrame."""
-        df = df.withColumn("pickup_datetime", F.to_timestamp("pickup_datetime"))
-        df = df.withColumn("pickup_weekday", F.dayofweek("pickup_datetime"))
-        df = df.withColumn("pickup_month", F.month("pickup_datetime"))
-        df = df.withColumn("pickup_monthday", F.dayofmonth("pickup_datetime"))
-        df = df.withColumn("pickup_hour", F.hour("pickup_datetime"))
-        df = df.withColumn("pickup_minute", F.minute("pickup_datetime"))
+        df = df.withColumn("pickup_datetime", f.to_timestamp("pickup_datetime"))
+        df = df.withColumn("pickup_weekday", f.dayofweek("pickup_datetime"))
+        df = df.withColumn("pickup_month", f.month("pickup_datetime"))
+        df = df.withColumn("pickup_monthday", f.dayofmonth("pickup_datetime"))
+        df = df.withColumn("pickup_hour", f.hour("pickup_datetime"))
+        df = df.withColumn("pickup_minute", f.minute("pickup_datetime"))
         df = df.withColumn("pickup_second", F.second("pickup_datetime"))
 
-        df = df.withColumn("dropoff_datetime", F.to_timestamp("dropoff_datetime"))
-        df = df.withColumn("dropoff_weekday", F.dayofweek("dropoff_datetime"))
-        df = df.withColumn("dropoff_month", F.month("dropoff_datetime"))
-        df = df.withColumn("dropoff_monthday", F.dayofmonth("dropoff_datetime"))
-        df = df.withColumn("dropoff_hour", F.hour("dropoff_datetime"))
-        df = df.withColumn("dropoff_minute", F.minute("dropoff_datetime"))
-        df = df.withColumn("dropoff_second", F.second("dropoff_datetime"))
+        df = df.withColumn("dropoff_datetime", f.to_timestamp("dropoff_datetime"))
+        df = df.withColumn("dropoff_weekday", f.dayofweek("dropoff_datetime"))
+        df = df.withColumn("dropoff_month", f.month("dropoff_datetime"))
+        df = df.withColumn("dropoff_monthday", f.dayofmonth("dropoff_datetime"))
+        df = df.withColumn("dropoff_hour", f.hour("dropoff_datetime"))
+        df = df.withColumn("dropoff_minute", f.minute("dropoff_datetime"))
+        df = df.withColumn("dropoff_second", f.second("dropoff_datetime"))
 
         df = df.drop("dropoff_datetime")
         return df
