@@ -4,7 +4,7 @@ channels:
 dependencies:
   - python=3.9
   - pip
-  - openjdk==11
+  - openjdk=11.0.8
   - pip:
       - pandas
       - numpy==1.23.5
