@@ -246,7 +246,12 @@ def main(
         subscription_id (str): Azure subscription ID.
         resource_group_name (str): Azure resource group name.
     """
-    spark = SparkSession.builder.getOrCreate()
+    spark = (SparkSession.builder
+             .appName("TaxiDataTransformer")
+             .config("spark.driver.memory", "4g")
+             .config("spark.executor.memory", "4g")
+             .getOrCreate()
+             )
 
     # Check if the input is a directory, and read all CSV files
     if os.path.isdir(clean_data):
