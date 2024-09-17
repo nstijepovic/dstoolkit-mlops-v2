@@ -4,6 +4,7 @@ channels:
 dependencies:
   - python=3.9
   - pip
+  - openjdk=11
   - pip:
       - pandas
       - numpy==1.23.5
@@ -17,4 +18,3 @@ dependencies:
       - Werkzeug==2.3.8
       - pyspark==3.2.1
       - azureml-featurestore>=1.1.0
-      - openjdk=11
