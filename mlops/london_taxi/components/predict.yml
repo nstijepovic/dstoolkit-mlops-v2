@@ -20,4 +20,3 @@ command: >-
   --model_input ${{inputs.model_input}} 
   --test_data ${{inputs.test_data}}
   --predictions ${{outputs.predictions}}
-  --feature_store_name ${{inputs.feature_store_name}}

@@ -55,16 +55,29 @@ def main(
 
     df_list = []
     for filename in arr:
-        print("reading file: %s ..." % filename)
-        input_df = pd.read_csv((Path(training_data) / filename))
-        df_list.append(input_df)
+        print(f"Processing directory: {filename}")
+        dir_path = Path(training_data) / filename
+        if os.path.isdir(dir_path):
+            csv_files = [f for f in os.listdir(dir_path) if f.endswith('.csv')]
+            if csv_files:
+                csv_path = dir_path / csv_files[0]
+                print(f"Reading file: {csv_path}")
+                input_df = pd.read_csv(csv_path)
+                df_list.append(input_df)
+            else:
+                print(f"No CSV files found in {dir_path}")
+        else:
+            print(f"Not a directory: {dir_path}")
 
-    train_data = df_list[0]
+    if not df_list:
+        raise ValueError("No data was loaded. Check the input path and file structure.")
+
+    train_data = pd.concat(df_list, ignore_index=True)
     print(train_data.columns)
 
     train_x, test_x, trainy, testy = split(train_data)
-    write_test_data(test_x, testy)
-    train_model(train_x, trainy)
+    write_test_data(test_x, testy, test_data)
+    train_model(train_x, trainy, model_output, model_metadata)
 
 
 def split(train_data):
@@ -81,8 +94,30 @@ def split(train_data):
     testy (pd.Series): The testing labels.
     """
     y = train_data["cost"]
-    x = train_data.drop(["cost", "timestamp", "accountID"], axis=1)
-
+    x = train_data[
+        [
+            "distance",
+            "dropoff_latitude",
+            "dropoff_longitude",
+            "passengers",
+            "pickup_latitude",
+            "pickup_longitude",
+            "store_forward",
+            "vendor",
+            "pickup_weekday",
+            "pickup_month",
+            "pickup_monthday",
+            "pickup_hour",
+            "pickup_minute",
+            "pickup_second",
+            "dropoff_weekday",
+            "dropoff_month",
+            "dropoff_monthday",
+            "dropoff_hour",
+            "dropoff_minute",
+            "dropoff_second",
+        ]
+    ]
     train_x, test_x, trainy, testy = train_test_split(x, y, test_size=0.3, random_state=42)
 
     return train_x, test_x, trainy, testy

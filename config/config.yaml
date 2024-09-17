@@ -12,7 +12,6 @@ feature_store_config:
   online_store_name: myonlinestore
   location: eastus
   transformation_code_path: src/london_src/transform
-  data_path: mlops/london_taxi/data
 
 environment_configuration:
   env_base_image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04

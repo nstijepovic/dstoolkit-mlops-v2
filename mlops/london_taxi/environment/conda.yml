@@ -4,6 +4,7 @@ channels:
 dependencies:
   - python=3.9
   - pip
+  - openjdk=11.0.8
   - pip:
       - python-dotenv
       - pandas

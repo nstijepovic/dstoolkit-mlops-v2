@@ -9,6 +9,8 @@ store registration and enrichment with existing features.
 
 import argparse
 import os
+import datetime
+from pathlib import Path
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as f
 from azure.ai.ml import MLClient
@@ -32,48 +34,27 @@ class TaxiDataTransformer(TransformationCode):
     the input DataFrame, as well as defining features for feature store registration.
     """
 
-    def __init__(self, config):
+    def __init__(self, config=None):
         """
         Initialize TaxiDataTransformer with a configuration object.
 
         Args:
             config: The configuration object containing feature store settings.
         """
-        self.config = config
+        self.config = config or {}
         self.spark = SparkSession.builder.getOrCreate()
 
-    def transform(
-        self,
-        df,
-        clean_data_path,
-        transformation_code_path,
-        subscription_id,
-        resource_group_name,
-        feature_store_name
-    ):
+    def transform(self, df):
         """
-        Apply transformations to the input DataFrame.
+        Clean and transform the input DataFrame.
 
         Args:
-            df (pyspark.sql.DataFrame): Input DataFrame to transform.
-            clean_data_path (str): Path to the cleaned data.
-            transformation_code_path (str): Path to the transformation code.
-            subscription_id (str): Azure subscription ID.
-            resource_group_name (str): Azure resource group name.
-            feature_store_name (str): Name of the feature store.
+            df (pyspark.sql.DataFrame): The DataFrame to transform.
 
         Returns:
-            pyspark.sql.DataFrame: Transformed DataFrame ready for machine learning.
-            FeatureSetSpecification: Feature set specification for registration.
+            pyspark.sql.DataFrame: Transformed DataFrame.
         """
-        spark_df = self._clean_and_transform_data(df)
-
-        # Define the features and register them in the feature store
-        feature_set_spec = self._define_features(
-            clean_data_path, transformation_code_path,
-            subscription_id, resource_group_name, feature_store_name, spark_df
-        )
-        return spark_df, feature_set_spec
+        return self._clean_and_transform_data(df)
 
     def _clean_and_transform_data(self, df):
         """
@@ -140,17 +121,9 @@ class TaxiDataTransformer(TransformationCode):
         df = df.drop("dropoff_datetime")
         return df
 
-    def _define_features(
-        self,
-        clean_data,
-        transformation_code_path,
-        subscription_id,
-        resource_group_name,
-        feature_store_name,
-        spark_df
-    ):
+    def register_features(self, clean_data, transformation_code_path, subscription_id, resource_group_name, feature_store_name):
         """
-        Define the features for feature store registration.
+        Register the features from the transformed DataFrame to the Azure Feature Store.
 
         Args:
             clean_data (str): Path to the cleaned data.
@@ -158,7 +131,6 @@ class TaxiDataTransformer(TransformationCode):
             subscription_id (str): Azure subscription ID.
             resource_group_name (str): Azure resource group name.
             feature_store_name (str): Name of the feature store.
-            spark_df (pyspark.sql.DataFrame): The transformed Spark DataFrame.
 
         Returns:
             FeatureSetSpecification: The feature set specification for registration.
@@ -178,7 +150,7 @@ class TaxiDataTransformer(TransformationCode):
             ),
             transformation_code=TransformationCode(
                 path=transformation_code_path,
-                transformer_class="TaxiDataTransformer",
+                transformer_class="transform.TaxiDataTransformer",
             ),
             index_columns=[Column(name="vendorID", type=ColumnType.string)],
             source_lookback=DateTimeOffset(days=7, hours=0, minutes=0),
@@ -191,9 +163,7 @@ class TaxiDataTransformer(TransformationCode):
             feature_set_spec=feature_set_spec,
             entity_name="taxi_trip",
         )
-        feature_set = poller.result()
-
-        return feature_set_spec, feature_set
+        return poller.result()
 
 
 def get_enriched_data(
@@ -221,6 +191,25 @@ def get_enriched_data(
     # Retrieve the feature set from the feature store
     feature_set = fs_client.feature_sets.get(name=feature_store_name, version="latest")
 
+    # check all feature stores and feature sets
+    feature_stores = fs_client.feature_stores.list()
+    if not feature_stores:
+        print("No feature stores found.")
+        return
+    print("Available feature stores:")
+    for feature_store in feature_stores:
+        print(f"- {feature_store.name}")
+
+        # List all feature sets within the feature store
+        feature_sets = fs_client.feature_sets.list(feature_store_name=feature_store.name)
+
+        if not feature_sets:
+            print(f"  No feature sets found in store '{feature_store.name}'.")
+            continue
+
+        for feature_set in feature_sets:
+            print(f"  Feature set: {feature_set.name}")
+
     # Assuming "vendorID" is the key column to join with the transformed data
     enriched_data = feature_set.join_on(transformed_data, join_column="vendorID")
 
@@ -230,7 +219,6 @@ def get_enriched_data(
 def main(
     clean_data,
     transformation_code_path,
-    transformed_data,
     feature_store_name,
     subscription_id,
     resource_group_name
@@ -256,26 +244,38 @@ def main(
     # Check if the input is a directory, and read all CSV files
     if os.path.isdir(clean_data):
         # Read CSV files using Spark
-        df = spark.read.csv(clean_data, header=True, inferSchema=True)
+        df = spark.read.csv(clean_data, header=True, inferSchema=True).drop("_c0")
     else:
-        df = spark.read.csv(clean_data, header=True, inferSchema=True)
+        df = spark.read.csv(clean_data, header=True, inferSchema=True).drop("_c0")
 
     # Transform the data
     transformer = TaxiDataTransformer(config={})
-    transformed_df, feature_set_spec = transformer.transform(
-        df, clean_data, transformation_code_path,
-        subscription_id, resource_group_name, feature_store_name
-    )
+    transformed_df = transformer.transform(df)
 
-    # Enrich the data from the feature store
-    transformed_data_with_features = get_enriched_data(
-        transformed_df, feature_store_name, subscription_id, resource_group_name
-    )
+    # Optionally register features in the Azure Feature Store
+    if feature_store_name:
+        feature_set_spec = transformer.register_features(
+            transformed_df, clean_data, transformation_code_path,
+            subscription_id, resource_group_name, feature_store_name
+        )
+        print("Feature Set Registered:", feature_set_spec)
 
-    # Save the final transformed and enriched data
-    transformed_data_with_features.write.csv(transformed_data, header=True, mode="overwrite")
+    # Add timestamp to the output path
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Use args.transformed_data to create the path dynamically
+    transformed_data_with_timestamp = Path(args.transformed_data_with_features) / f"transformed_data_{timestamp}"
 
-    return transformed_data_with_features, feature_set_spec
+    # Ensure the path is a string when passing it to Spark
+    transformed_data_with_timestamp_str = str(transformed_data_with_timestamp)
+
+    # Save the transformed data
+    try:
+        transformed_df.write.csv(transformed_data_with_timestamp_str, header=True, mode="overwrite")
+        print(f"Successfully wrote data to {transformed_data_with_timestamp}")
+    except Exception as e:
+        print(f"Error writing data: {str(e)}")
+        # Optionally, you can raise the exception here if you want the script to fail
+        # raise e
 
 
 if __name__ == "__main__":
@@ -307,7 +307,6 @@ if __name__ == "__main__":
     main(
         args.clean_data,
         args.transformation_code_path,
-        args.transformed_data_with_features,
         args.feature_store_name,
         args.subscription_id,
         args.resource_group_name

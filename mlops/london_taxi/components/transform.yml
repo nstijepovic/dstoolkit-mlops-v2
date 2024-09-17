@@ -21,6 +21,8 @@ command: >-
   python -m src.london_src.transform.transform
   --clean_data ${{inputs.clean_data}} 
   --transformation_code_path ${{inputs.transformation_code_path}}
+  --subscription_id {{inputs.subscription_id}} 
+  --resource_group_name {{inputs.resource_group_name}} 
   --transformed_data_with_features ${{outputs.transformed_data_with_features}}
   --feature_set_specification ${{outputs.feature_set_specification}}
   --registered_feature_set ${{outputs.registered_feature_set}}
