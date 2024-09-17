@@ -6,4 +6,3 @@ python-dotenv>=0.10.3
 azureml-mlflow>=1.51.0
 azureml-featurestore>=1.1.0
 pyspark==3.2.1
-openjdk==11
