@@ -121,7 +121,14 @@ class TaxiDataTransformer(TransformationCode):
         df = df.drop("dropoff_datetime")
         return df
 
-    def register_features(self, clean_data, transformation_code_path, subscription_id, resource_group_name, feature_store_name):
+    def register_features(
+        self,
+        clean_data,
+        transformation_code_path,
+        subscription_id,
+        resource_group_name,
+        feature_store_name
+    ):
         """
         Register the features from the transformed DataFrame to the Azure Feature Store.
 
@@ -167,7 +174,9 @@ class TaxiDataTransformer(TransformationCode):
 
 
 def get_enriched_data(
-    transformed_data, feature_store_name, subscription_id, resource_group_name
+    transformed_data,
+    feature_store_name, subscription_id,
+    resource_group_name
 ):
     """
     Enrich the transformed data by pulling features from the Azure Feature Store.
