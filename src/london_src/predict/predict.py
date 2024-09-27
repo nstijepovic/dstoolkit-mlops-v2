@@ -1,14 +1,9 @@
 """
-This module provides functionality for scoring a machine learning model.
+This module is designed for making predictions using a machine learning model.
 
-It includes capabilities to load test data, make predictions using a pre-trained model,
-and save these predictions. The module is designed to work with a specific data format,
-expecting features related to taxi trip data. It outputs the predictions along with actual
-values for further analysis.
-
-The module can be executed as a script with command-line arguments specifying paths for the model,
-test data, and the location to save predictions. It is designed to be used in a machine learning
-operations (MLOps) context, where automated scoring of models is a key step in the model evaluation process.
+It includes functionality to load test data, load a pre-trained model, make predictions on the test data,
+and save these predictions. The module can be run as a script, allowing users to specify the model file,
+test data, and prediction output path via command-line arguments.
 """
 
 import argparse
@@ -39,7 +34,6 @@ def main(model_input, test_data, prediction_path):
     predict(test_x, testy, model_input, prediction_path)
 
 
-# Load and split the test data
 def load_test_data(test_data):
     """
     Load test data and store it in two data frames.

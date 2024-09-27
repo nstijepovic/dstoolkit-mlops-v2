@@ -18,23 +18,32 @@ import mlflow
 import json
 
 
-def main(training_data, test_data, model_output, model_metadata):
+def main(
+    training_data,
+    test_data,
+    model_output,
+    model_metadata,
+    feature_store_name
+):
     """
-    Read training data, split data and initiate training.
+    Read training data, split data, enrich data with features from the feature store, and initiate training.
 
     Parameters:
       training_data (str): training data folder
       test_data (str): test data folder
       model_output (str): a folder to store model files
-      model_metadata (str): a file to store information about thr model
+      model_metadata (str): a file to store information about the model
+      feature_store_name (str): name of the feature store
+      subscription_id (str): Azure subscription ID
+      resource_group_name (str): Azure resource group name
     """
-    print("Hello training world...")
-
+    print("Starting training...")
     lines = [
         f"Training data path: {training_data}",
         f"Test data path: {test_data}",
         f"Model output path: {model_output}",
         f"Model metadata path: {model_metadata}",
+        f"Feature store name: {feature_store_name}"
     ]
 
     for line in lines:
@@ -46,16 +55,29 @@ def main(training_data, test_data, model_output, model_metadata):
 
     df_list = []
     for filename in arr:
-        print("reading file: %s ..." % filename)
-        input_df = pd.read_csv((Path(training_data) / filename))
-        df_list.append(input_df)
+        print(f"Processing directory: {filename}")
+        dir_path = Path(training_data) / filename
+        if os.path.isdir(dir_path):
+            csv_files = [f for f in os.listdir(dir_path) if f.endswith('.csv')]
+            if csv_files:
+                csv_path = dir_path / csv_files[0]
+                print(f"Reading file: {csv_path}")
+                input_df = pd.read_csv(csv_path)
+                df_list.append(input_df)
+            else:
+                print(f"No CSV files found in {dir_path}")
+        else:
+            print(f"Not a directory: {dir_path}")
 
-    train_data = df_list[0]
+    if not df_list:
+        raise ValueError("No data was loaded. Check the input path and file structure.")
+
+    train_data = pd.concat(df_list, ignore_index=True)
     print(train_data.columns)
 
     train_x, test_x, trainy, testy = split(train_data)
-    write_test_data(test_x, testy)
-    train_model(train_x, trainy)
+    write_test_data(test_x, testy, test_data)
+    train_model(train_x, trainy, model_output, model_metadata)
 
 
 def split(train_data):
@@ -63,15 +85,14 @@ def split(train_data):
     Split the input data into training and testing sets.
 
     Parameters:
-    train_data (DataFrame): The input data.
+    train_data (pd.DataFrame): The input data.
 
     Returns:
-    trainX (DataFrame): The training data.
-    testX (DataFrame): The testing data.
-    trainy (Series): The training labels.
-    testy (Series): The testing labels.
+    trainX (pd.DataFrame): The training data.
+    testX (pd.DataFrame): The testing data.
+    trainy (pd.Series): The training labels.
+    testy (pd.Series): The testing labels.
     """
-    # Split the data into input(X) and output(y)
     y = train_data["cost"]
     x = train_data[
         [
@@ -97,58 +118,53 @@ def split(train_data):
             "dropoff_second",
         ]
     ]
-
-    # Split the data into train and test sets
-    train_x, test_x, trainy, testy = train_test_split(
-        x, y, test_size=0.3, random_state=42
-    )
-    print(train_x.shape)
-    print(train_x.columns)
+    train_x, test_x, trainy, testy = train_test_split(x, y, test_size=0.3, random_state=42)
 
     return train_x, test_x, trainy, testy
 
 
-def train_model(train_x, trainy):
+def train_model(train_x, trainy, model_output, model_metadata):
     """
     Train a Linear Regression model and save the model and its metadata.
 
     Parameters:
-    trainX (DataFrame): The training data.
-    trainy (Series): The training labels.
+    trainX (pd.DataFrame): The training data.
+    trainy (pd.Series): The training labels.
+    model_output (str): Path to save the model.
+    model_metadata (str): Path to save the model metadata.
 
     Returns:
     None
     """
     mlflow.autolog()
-    # Train a Linear Regression Model with the train set
     with mlflow.start_run() as run:
         model = LinearRegression().fit(train_x, trainy)
-        print(model.score(train_x, trainy))
+        print(f"Model Score: {model.score(train_x, trainy)}")
 
-        # Output the model, metadata and test data
         run_id = mlflow.active_run().info.run_id
         model_uri = f"runs:/{run_id}/model"
         model_data = {"run_id": run.info.run_id, "run_uri": model_uri}
-        with open(args.model_metadata, "w") as json_file:
+
+        with open(model_metadata, "w") as json_file:
             json.dump(model_data, json_file, indent=4)
 
-        pickle.dump(model, open((Path(args.model_output) / "model.sav"), "wb"))
+        pickle.dump(model, open((Path(model_output) / "model.sav"), "wb"))
 
 
-def write_test_data(test_x, testy):
+def write_test_data(test_x, testy, test_data):
     """
     Write the testing data to a CSV file.
 
     Parameters:
-    testX (DataFrame): The testing data.
-    testy (Series): The testing labels.
+    testX (pd.DataFrame): The testing data.
+    testy (pd.Series): The testing labels.
+    test_data (str): The path to save the test data.
 
     Returns:
     None
     """
     test_x["cost"] = testy
-    print(test_x.shape)
-    test_x.to_csv((Path(args.test_data) / "test_data.csv"))
+    test_x.to_csv((Path(test_data) / "test_data.csv"))
 
 
 if __name__ == "__main__":
@@ -157,12 +173,11 @@ if __name__ == "__main__":
     parser.add_argument("--test_data", type=str, help="Path to test data")
     parser.add_argument("--model_output", type=str, help="Path of output model")
     parser.add_argument("--model_metadata", type=str, help="Path of model metadata")
+    parser.add_argument("--feature_store_name", type=str, help="Name of the feature store")
 
     args = parser.parse_args()
 
-    training_data = args.training_data
-    test_data = args.test_data
-    model_output = args.model_output
-    model_metadata = args.model_metadata
-
-    main(training_data, test_data, model_output, model_metadata)
+    main(
+        args.training_data, args.test_data, args.model_output,
+        args.model_metadata, args.feature_store_name
+    )

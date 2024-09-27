@@ -4,8 +4,10 @@ display_name: TrainLinearRegressionModel
 version: 1
 type: command
 inputs:
-  training_data: 
+  training_data:
     type: uri_folder
+  feature_store_name:
+    type: string
 outputs:
   model_output:
     type: uri_folder
@@ -21,5 +23,4 @@ command: >-
   --test_data ${{outputs.test_data}} 
   --model_output ${{outputs.model_output}}
   --model_metadata ${{outputs.model_metadata}}
-
-
+  --feature_store_name ${{inputs.feature_store_name}}
