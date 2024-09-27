@@ -17,6 +17,11 @@ from azure.ai.ml import MLClient
 from azure.identity import DefaultAzureCredential
 from azureml.featurestore import create_feature_set_spec
 from azureml.featurestore.feature_source import CsvFeatureSource
+from azure.ai.ml.entities import (
+    FeatureStore,
+    FeatureStoreEntity,
+    FeatureSet,
+)
 from azureml.featurestore.contracts import (
     DateTimeOffset,
     TransformationCode,
@@ -125,9 +130,6 @@ class TaxiDataTransformer(TransformationCode):
         self,
         clean_data,
         transformation_code_path,
-        subscription_id,
-        resource_group_name,
-        feature_store_name
     ):
         """
         Register the features from the transformed DataFrame to the Azure Feature Store.
@@ -135,48 +137,62 @@ class TaxiDataTransformer(TransformationCode):
         Args:
             clean_data (str): Path to the cleaned data.
             transformation_code_path (str): Path to the transformation code.
-            subscription_id (str): Azure subscription ID.
-            resource_group_name (str): Azure resource group name.
-            feature_store_name (str): Name of the feature store.
 
         Returns:
             FeatureSetSpecification: The feature set specification for registration.
         """
-        fs_client = MLClient(
+        subscription_id = "a1e2f839-e403-4d66-9a4b-96f6c743606f"
+        resource_group_name = "mlopsv2-rg"
+        ml_client = MLClient(
             DefaultAzureCredential(),
             subscription_id=subscription_id,
             resource_group_name=resource_group_name,
-            feature_store_name=feature_store_name
         )
 
-        feature_set_spec = create_feature_set_spec(
-            source=CsvFeatureSource(
-                path=clean_data,
-                timestamp_column=TimestampColumn(name="pickup_datetime"),
-                source_delay=DateTimeOffset(days=0, hours=0, minutes=20),
-            ),
-            transformation_code=TransformationCode(
-                path=transformation_code_path,
-                transformer_class="transform.TaxiDataTransformer",
-            ),
-            index_columns=[Column(name="vendorID", type=ColumnType.string)],
-            source_lookback=DateTimeOffset(days=7, hours=0, minutes=0),
-            temporal_join_lookback=DateTimeOffset(days=1, hours=0, minutes=0),
-            infer_schema=True,
-        )
+        try:
+            # Create the feature store
+            fs = FeatureStore(name="LondonFS", location="eastus")
+            print("Creating feature store...")
+            fs_poller = ml_client.feature_stores.begin_create(fs)
+            feature_store_result = fs_poller.result()  # Ensure that the creation completes
+            print(f"Feature store creation result: {feature_store_result}")
 
-        poller = fs_client.feature_sets.begin_create_or_update(
-            name="london_taxi_features",
-            feature_set_spec=feature_set_spec,
-            entity_name="taxi_trip",
-        )
-        return poller.result()
+            # Define feature set specification
+            feature_set_spec = create_feature_set_spec(
+                source=CsvFeatureSource(
+                    path=clean_data,
+                    timestamp_column=TimestampColumn(name="pickup_datetime"),
+                    source_delay=DateTimeOffset(days=0, hours=0, minutes=20),
+                ),
+                transformation_code=TransformationCode(
+                    path=transformation_code_path,
+                    transformer_class="transform.TaxiDataTransformer",
+                ),
+                index_columns=[Column(name="vendorID", type=ColumnType.string)],
+                source_lookback=DateTimeOffset(days=7, hours=0, minutes=0),
+                temporal_join_lookback=DateTimeOffset(days=1, hours=0, minutes=0),
+                infer_schema=True,
+            )
+
+            # Register the feature set
+            print("Registering feature set...")
+            poller = ml_client.feature_sets.begin_create_or_update(
+                name="london_taxi_features",
+                feature_set_spec=feature_set_spec,
+                entity_name="taxi_trip",
+            )
+            result = poller.result()  # Ensure that the registration completes
+            print(f"Feature set registration result: {result}")
+            return result
+
+        except Exception as e:
+            print(f"Error during feature store creation or feature registration: {e}")
+            raise
 
 
 def get_enriched_data(
     transformed_data,
-    feature_store_name, subscription_id,
-    resource_group_name
+    feature_store_name
 ):
     """
     Enrich the transformed data by pulling features from the Azure Feature Store.
@@ -191,6 +207,8 @@ def get_enriched_data(
     pyspark.sql.DataFrame: The enriched DataFrame with additional features.
     """
     # Initialize the Azure ML client
+    subscription_id = "a1e2f839-e403-4d66-9a4b-96f6c743606f"
+    resource_group_name = "mlopsv2-rg"
     fs_client = MLClient(
         DefaultAzureCredential(),
         subscription_id=subscription_id,
@@ -228,9 +246,7 @@ def get_enriched_data(
 def main(
     clean_data,
     transformation_code_path,
-    feature_store_name,
-    subscription_id,
-    resource_group_name
+    feature_store_name
 ):
     """
     Run the transformation and enrichment process for taxi data.
@@ -238,11 +254,9 @@ def main(
     Args:
         clean_data (str): Path to the cleaned data.
         transformation_code_path (str): Path to the transformation code.
-        transformed_data (str): Path to save the transformed data.
         feature_store_name (str): Name of the feature store.
-        subscription_id (str): Azure subscription ID.
-        resource_group_name (str): Azure resource group name.
     """
+    # Initialize Spark session
     spark = (SparkSession.builder
              .appName("TaxiDataTransformer")
              .config("spark.driver.memory", "4g")
@@ -252,7 +266,6 @@ def main(
 
     # Check if the input is a directory, and read all CSV files
     if os.path.isdir(clean_data):
-        # Read CSV files using Spark
         df = spark.read.csv(clean_data, header=True, inferSchema=True).drop("_c0")
     else:
         df = spark.read.csv(clean_data, header=True, inferSchema=True).drop("_c0")
@@ -263,60 +276,35 @@ def main(
 
     # Optionally register features in the Azure Feature Store
     if feature_store_name:
-        feature_set_spec = transformer.register_features(
-            transformed_df, clean_data, transformation_code_path,
-            subscription_id, resource_group_name, feature_store_name
-        )
-        print("Feature Set Registered:", feature_set_spec)
+        try:
+            feature_set_spec = transformer.register_features(
+                transformed_df, clean_data, transformation_code_path
+            )
+            print("Feature Set Registered:", feature_set_spec)
+        except Exception as e:
+            print(f"Error during feature registration: {e}")
 
-    # Add timestamp to the output path
+    # Add timestamp to the output path and save transformed data
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    # Use args.transformed_data to create the path dynamically
     transformed_data_with_timestamp = Path(args.transformed_data_with_features) / f"transformed_data_{timestamp}"
 
-    # Ensure the path is a string when passing it to Spark
-    transformed_data_with_timestamp_str = str(transformed_data_with_timestamp)
-
-    # Save the transformed data
     try:
-        transformed_df.write.csv(transformed_data_with_timestamp_str, header=True, mode="overwrite")
+        transformed_df.write.csv(str(transformed_data_with_timestamp), header=True, mode="overwrite")
         print(f"Successfully wrote data to {transformed_data_with_timestamp}")
     except Exception as e:
         print(f"Error writing data: {str(e)}")
-        # Optionally, you can raise the exception here if you want the script to fail
-        # raise e
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("transform")
     parser.add_argument("--clean_data", type=str, help="Path to prepped data")
-    parser.add_argument(
-        "--transformation_code_path", type=str, help="Path to the transformation code"
-    )
-    parser.add_argument(
-        "--transformed_data_with_features", type=str, help="Path of output data"
-    )
+    parser.add_argument("--transformation_code_path", type=str, help="Path to the transformation code")
+    parser.add_argument("--transformed_data_with_features", type=str, help="Path of output data")
     parser.add_argument("--feature_store_name", type=str, help="Name of the feature store")
-    parser.add_argument("--subscription_id", type=str, help="Azure subscription ID")
-    parser.add_argument("--resource_group_name", type=str, help="Azure resource group name")
-    parser.add_argument(
-        "--feature_set_specification",
-        type=str,
-        help="Path to the feature set specification",
-        required=False
-    )
-    parser.add_argument(
-        "--registered_feature_set",
-        type=str,
-        help="Path to the registered feature set",
-        required=False
-    )
 
     args = parser.parse_args()
     main(
         args.clean_data,
         args.transformation_code_path,
-        args.feature_store_name,
-        args.subscription_id,
-        args.resource_group_name
+        args.feature_store_name
     )

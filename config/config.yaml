@@ -8,7 +8,7 @@ feature_store_config:
   subscription_id: ${SUBSCRIPTION_ID}
   resource_group_name: ${RESOURCE_GROUP_NAME}
   workspace_name: ${WORKSPACE_NAME}
-  name: taxi_feature_store
+  name: lnd_taxi_feature_store
   online_store_name: myonlinestore
   location: eastus
   transformation_code_path: src/london_src/transform
